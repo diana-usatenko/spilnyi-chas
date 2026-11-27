@@ -102,6 +102,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
 .countdown{font-variant-numeric:tabular-nums}
 footer{margin-top:24px;text-align:center;font-size:12px;color:var(--muted)}
 .hide{display:none!important}
+.top-right{display:flex;align-items:center;gap:8px}
+.poll-item{display:grid;gap:4px;text-decoration:none;color:var(--text)}
+.poll-item:hover{border-color:var(--accent)}
+.poll-row{display:grid;gap:2px;padding:10px 0;border-top:1px solid var(--border);text-decoration:none;color:var(--text)}
+.poll-row:first-of-type{border-top:0}
 /* --- простий інтерфейс --- */
 .wizard{padding:22px}
 .progress{display:flex;gap:6px;margin-bottom:22px}
@@ -174,7 +179,7 @@ details.card h3{font-size:15px;margin:18px 0 8px}
 <div class="wrap">
   <header class="top">
     <a class="brand" href="#" data-nav="{}"><span class="dot">⏱</span> Спільний час</a>
-    <span id="modeBadge" class="pill hide"></span>
+    <span class="top-right"><span id="modeBadge" class="pill hide"></span><a class="btn sm" id="myLink" data-nav='{"my":"1"}' href="?my=1">Мої дзвінки</a></span>
   </header>
   <main id="app"></main>
   <footer><span id="ftText">Демо-режим: дані зберігаються лише в цьому браузері</span> · <a href="privacy.html">Політика конфіденційності</a></footer>
@@ -462,6 +467,12 @@ const Store = {
     this._save(db);
     return { ok: true };
   },
+  async login(email) {
+    if (this.mode !== 'gas') throw new Error('У демо-режимі вхід не працює');
+    return this._gas('login', { email, siteUrl: location.href.split(/[?#]/)[0] });
+  },
+  async session(token) { return this._gas('session', { token }); },
+  async myPolls(session) { return this._gas('myPolls', { session }); },
   async checkAdmin(id, token) {
     if (this.mode === 'gas') return this._gas('check', { id, adminToken: token });
     const p = this._db().polls[id];
@@ -651,7 +662,7 @@ const chip = (group, value, label, on, sub = '') =>
 function viewCreate() {
   const today = todayLocal();
   const st = viewCreate.st || (viewCreate.st = {
-    step: 1, title: '', organizer: safeLS.get('cp_name') || '', days: new Set(), month: today.slice(0, 8) + '01',
+    step: 1, title: '', organizer: safeLS.get('cp_name') || '', orgEmail: safeLS.get('cp_email') || '', days: new Set(), month: today.slice(0, 8) + '01',
     part: 'evening', hf: 17, ht: 21, dur: 60, durC: '', dl: 48, dlC: '', invitees: [{ name: '', email: '' }],
     kind: '', freq: 'w1', nth: 1, wds: new Set()
   });
@@ -663,7 +674,10 @@ function viewCreate() {
         <h1 class="q">Про що дзвінок?</h1>
         <div class="field"><input type="text" id="title" class="big-input" maxlength="120" placeholder="Напр., Спільна закупівля" value="${esc(st.title)}"></div>
         <h2 class="q2">Як вас звати?</h2>
-        <div class="field"><input type="text" id="org" class="big-input" maxlength="60" placeholder="Ваше ім'я" value="${esc(st.organizer)}"></div>`;
+        <div class="field"><input type="text" id="org" class="big-input" maxlength="60" placeholder="Ваше ім'я" value="${esc(st.organizer)}"></div>
+        <h2 class="q2">Ваша пошта</h2>
+        <div class="field"><input type="email" id="orgEmail" class="big-input" maxlength="120" inputmode="email" autocomplete="email" placeholder="you@gmail.com" value="${esc(st.orgEmail)}"></div>
+        <p class="small muted" style="margin:-4px 0 0">Надішлемо посилання на результати і повідомимо, коли всі відповідять. Дзвінок з'явиться в «Мої дзвінки».</p>`;
       case 2: return `
         <h1 class="q">Як часто буде дзвінок?</h1>
         <div class="chips list">
@@ -712,7 +726,7 @@ function viewCreate() {
   };
 
   const save = () => {
-    if (st.step === 1) { st.title = $('#title').value.trim(); st.organizer = $('#org').value.trim(); }
+    if (st.step === 1) { st.title = $('#title').value.trim(); st.organizer = $('#org').value.trim(); st.orgEmail = $('#orgEmail').value.trim(); }
     if (st.step === 3) { if ($('#hf')) { st.hf = +$('#hf').value; st.ht = +$('#ht').value; } if ($('#durC')) st.durC = $('#durC').value; }
     if (st.step === 4) st.invitees = [...$('#inv').querySelectorAll('.inv-row')].map(r => ({ name: r.querySelector('.inv-n').value.trim(), email: r.querySelector('.inv-e').value.trim() }));
     if (st.step === 5 && $('#dlC')) st.dlC = $('#dlC').value;
@@ -731,6 +745,8 @@ function viewCreate() {
     if (st.step === 1) {
       if (!st.title) return 'Напишіть, про що дзвінок';
       if (!st.organizer) return "Напишіть своє ім'я";
+      if (LIVE && !st.orgEmail) return 'Напишіть свою пошту: туди прийде посилання на результати';
+      if (st.orgEmail && !EMAIL_RE.test(st.orgEmail)) return 'Здається, в пошті помилка';
     }
     if (st.step === 2) {
       if (!st.kind) return 'Оберіть, як часто буде дзвінок';
@@ -791,6 +807,7 @@ function viewCreate() {
     if (st.step === 2 && st.kind === 'once') bindCal();
     if (st.step === 4) bindInv();
     if (st.step === 5) $('#summary').innerHTML = summaryHtml();
+    $('#f').addEventListener('input', () => { $('#err').textContent = ''; });
     $('#f').addEventListener('submit', async e => {
       e.preventDefault();
       save();
@@ -899,7 +916,7 @@ function viewCreate() {
     }
     const invitees = st.invitees.filter(i => i.name || i.email).map(i => ({ name: i.name || i.email.split('@')[0], email: i.email }));
     const data = {
-      title: st.title, organizer: st.organizer, duration: duration(), days, dateFrom: days[0], dateTo: days[days.length - 1],
+      title: st.title, organizer: st.organizer, organizerEmail: st.orgEmail, duration: duration(), days, dateFrom: days[0], dateTo: days[days.length - 1],
       hourFrom: f, hourTo: t, deadline: deadline(), tz: TZ, invitees, expected: invitees.map(i => i.name), repeat: r,
       siteUrl: location.href.split(/[?#]/)[0]
     };
@@ -909,6 +926,8 @@ function viewCreate() {
       const res = await Store.createPoll(data);
       safeLS.set('cp_admin_' + res.id, res.adminToken);
       safeLS.set('cp_name', st.organizer);
+      if (st.orgEmail) safeLS.set('cp_email', st.orgEmail);
+      rememberMine({ id: res.id, adminToken: res.adminToken, title: st.title, createdAt: Date.now() });
       viewCreate.st = null;
       justCreated = { ...res, hadEmails: invitees.some(i => i.email) };
       Nav.go({ a: res.id, t: res.adminToken });
@@ -1075,7 +1094,7 @@ async function viewParticipant(id) {
 /* ======================= ОРГАНІЗАТОР: результати ======================= */
 function createdBanner(res) {
   const n = res.mailed || 0, failed = res.mailFailed || [];
-  return `<div class="banner ok">🎉 Готово! ${n ? `Запрошення надіслано ${plural(n, 'людині', 'людям', 'людям')}.` : 'Тепер надішліть посилання людям.'}</div>`
+  return `<div class="banner ok">🎉 Готово! ${n ? `Запрошення надіслано ${plural(n, 'людині', 'людям', 'людям')}.` : 'Тепер надішліть посилання людям.'}${res.orgMailed ? ' Посилання на цю сторінку ми надіслали вам на пошту.' : ''}</div>`
     + (failed.length ? `<div class="banner">Не вдалося надіслати лист на: ${esc(failed.join(', '))}. Надішліть їм посилання самі.</div>` : '')
     + (res.demo && res.hadEmails ? '<div class="banner">Демо-режим: листи не надсилаються.</div>' : '');
 }
@@ -1205,16 +1224,87 @@ async function viewAdmin(id, token, isNew) {
   }));
 }
 
+/* ======================= МОЇ ДЗВІНКИ ======================= */
+function rememberMine(x) {
+  let list = [];
+  try { list = JSON.parse(safeLS.get('cp_mine') || '[]'); } catch {}
+  list = [x, ...list.filter(y => y.id !== x.id)].slice(0, 50);
+  safeLS.set('cp_mine', JSON.stringify(list));
+}
+function localMine() { try { return JSON.parse(safeLS.get('cp_mine') || '[]'); } catch { return []; } }
+function pollStatus(x) {
+  if (x.final) return `✓ ${esc(x.repeat ? cap(repeatText(x.repeat, wdOf(x.final.date))) : fmtDay(x.final.date))}, ${hm(x.final.start)}`;
+  if (x.closed) return '⏳ голосування завершено, оберіть час';
+  return `відповіли ${x.answered}${x.expected ? ' з ' + x.expected : ''} · до ${esc(fmtDeadline(x.deadline))}`;
+}
+async function viewMy() {
+  const session = safeLS.get('cp_session');
+  const newBtn = `<a class="btn primary big-btn block" ${navAttrs({})}>＋ Новий дзвінок</a>`;
+  if (LIVE && session) {
+    let data;
+    try { data = await Store.myPolls(session); }
+    catch (ex) { safeLS.set('cp_session', ''); return viewMy(); }
+    app.innerHTML = `<div class="card">
+        <h1 class="q" style="margin-bottom:4px">Мої дзвінки</h1>
+        <p class="muted small" style="margin:0">${esc(data.email)} · <button class="linkbtn" id="logout" style="display:inline;margin:0">Вийти</button></p>
+      </div>
+      ${data.polls.length ? data.polls.map(x => `<a class="card poll-item" ${navAttrs({ a: x.id, t: x.adminToken })}>
+          <b>${esc(x.title)}</b><span class="small muted">${pollStatus(x)}</span></a>`).join('')
+        : '<div class="card center"><div class="emoji">📭</div><p class="muted">Поки немає дзвінків. Створіть перший!</p></div>'}
+      ${newBtn}`;
+    $('#logout').addEventListener('click', () => { safeLS.set('cp_session', ''); route(); });
+    return;
+  }
+  const mine = localMine();
+  app.innerHTML = `${LIVE ? `<div class="card">
+      <h1 class="q">Мої дзвінки</h1>
+      <p class="muted hint">Напишіть свою пошту, і ми надішлемо посилання для входу. Без пароля. Так ви побачите свої дзвінки з будь-якого телефона чи комп'ютера.</p>
+      <form id="lf" novalidate>
+        <input type="email" id="le" class="big-input" maxlength="120" inputmode="email" autocomplete="email" placeholder="you@gmail.com" value="${esc(safeLS.get('cp_email') || '')}">
+        <p class="err" id="err"></p>
+        <button class="btn primary big-btn block" type="submit">Надіслати посилання для входу</button>
+      </form>
+    </div>` : ''}
+    ${mine.length ? `<div class="card"><h2>На цьому пристрої</h2>${mine.map(x => `<a class="poll-row" ${navAttrs({ a: x.id, t: x.adminToken })}><b>${esc(x.title)}</b><span class="small muted">${esc(fmtDeadline(x.createdAt))}</span></a>`).join('')}</div>` : ''}
+    ${newBtn}`;
+  $('#lf')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $('#le').value.trim();
+    if (!EMAIL_RE.test(email)) { $('#err').textContent = 'Здається, в пошті помилка'; return; }
+    const btn = $('#lf button'); btn.disabled = true; btn.textContent = 'Надсилаємо…';
+    try {
+      await Store.login(email);
+      safeLS.set('cp_email', email);
+      $('#lf').outerHTML = `<div class="center"><div class="emoji">📬</div><h2>Перевірте пошту</h2><p class="muted">Ми надіслали посилання для входу на <b>${esc(email)}</b>. Воно діє 30 хвилин. Якщо листа немає, загляньте в «Спам».</p></div>`;
+    } catch (ex) { $('#err').textContent = ex.message; btn.disabled = false; btn.textContent = 'Надіслати посилання для входу'; }
+  });
+}
+async function viewLogin(token) {
+  try {
+    const r = await Store.session(token);
+    safeLS.set('cp_session', r.session);
+    safeLS.set('cp_email', r.email);
+    history.replaceState(null, '', location.pathname + '?my=1');
+    Nav.params = { my: '1' };
+    toast('Ви увійшли');
+    await viewMy();
+  } catch (ex) {
+    app.innerHTML = `<div class="card center"><div class="emoji">⌛</div><h2>Посилання не спрацювало</h2><p class="muted">${esc(ex.message)}</p><a class="btn primary big-btn" ${navAttrs({ my: '1' })}>Увійти ще раз</a></div>`;
+  }
+}
+
 let justCreated = false;
 async function route() {
   clearInterval(tickTimer);
   const P = Nav.params;
-  const isPage = !!(P.p || (P.a && P.t));
+  const isPage = !!(P.p || (P.a && P.t) || P.my || P.login);
   if (isPage && !app.querySelector('.card')) app.innerHTML = '<div class="card muted">Завантаження…</div>';
   app.style.opacity = isPage ? '.55' : '';
   const fresh = justCreated; justCreated = false;
   try {
-    if (P.p) await viewParticipant(P.p);
+    if (P.login) await viewLogin(P.login);
+    else if (P.my) await viewMy();
+    else if (P.p) await viewParticipant(P.p);
     else if (P.a && P.t) await viewAdmin(P.a, P.t, fresh);
     else viewCreate();
   } catch (ex) {

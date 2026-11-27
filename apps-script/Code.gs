@@ -11,12 +11,16 @@
  *
  * ПІСЛЯ ЗМІН У КОДІ: Розгорнути → Керувати розгортаннями → ✏️ → Нова версія → Розгорнути.
  * Листи учасникам надсилаються з пошти власника скрипта (ліміт Google: ~100 адрес на день).
+ * Відповіді на запрошення йдуть на пошту організатора; вхід «Мої дзвінки» — через одноразове посилання в листі.
  */
 
 var POLLS = 'Polls';
 var RESP = 'Responses';
 var POLL_COLS = ['id', 'adminToken', 'title', 'organizer', 'duration', 'dateFrom', 'dateTo', 'hourFrom', 'hourTo',
-  'skipWeekends', 'deadline', 'tz', 'expected', 'createdAt', 'closedAt', 'final', 'deadlineText', 'days', 'invitees', 'siteUrl', 'repeat'];
+  'skipWeekends', 'deadline', 'tz', 'expected', 'createdAt', 'closedAt', 'final', 'deadlineText', 'days', 'invitees', 'siteUrl', 'repeat', 'organizerEmail', 'notifiedAll'];
+var SESS = 'Sessions';
+var SESS_COLS = ['token', 'email', 'createdAt'];
+var SESSION_DAYS = 180;
 var RESP_COLS = ['pollId', 'id', 'name', 'cells', 'source', 'updatedAt', 'slotsCount'];
 var EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]+$/;
 var UK_WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
@@ -33,6 +37,7 @@ function setup() {
   var ss = ss_();
   sheet_(POLLS, POLL_COLS);
   sheet_(RESP, RESP_COLS);
+  sheet_(SESS, SESS_COLS);
   Logger.log('Таблиця з даними: ' + ss.getUrl());
   Logger.log('Можна надіслати ще листів сьогодні: ' + MailApp.getRemainingDailyQuota());
 }
@@ -73,6 +78,9 @@ function handle_(b) {
     case 'remind': return remind_(b);
     case 'close': return withLock_(function () { return close_(b); });
     case 'finalize': return withLock_(function () { return finalize_(b); });
+    case 'login': return login_(b);
+    case 'session': return withLock_(function () { return session_(b); });
+    case 'myPolls': return myPolls_(b);
   }
   throw new Error('Невідома дія');
 }
@@ -89,7 +97,20 @@ function createPoll_(b) {
   var sh = sheet_(POLLS, POLL_COLS);
   writeRow_(sh, sh.getLastRow() + 1, POLL_COLS, pollToRow_(d));
   var mail = sendMails_(d, d.invitees, false);
-  return { id: d.id, adminToken: d.adminToken, mailed: mail.sent, mailFailed: mail.failed };
+  var orgMailed = false;
+  if (d.organizerEmail) {
+    try {
+      var adminLink = d.siteUrl + '?a=' + encodeURIComponent(d.id) + '&t=' + encodeURIComponent(d.adminToken);
+      var pLink = d.siteUrl + '?p=' + encodeURIComponent(d.id);
+      sendNotice_(d.organizerEmail, 'Ваш дзвінок «' + d.title + '» створено', 'Привіт, ' + d.organizer + '!', [
+        'Дзвінок «' + d.title + '» створено' + (mail.sent ? ', запрошення надіслано ' + mail.sent + ' ' + (mail.sent === 1 ? 'людині' : 'людям') : '') + '.',
+        'За кнопкою нижче ви бачите, хто відповів, і обираєте час. Збережіть цей лист. Ми також напишемо, коли всі відповідять.',
+        'Посилання для учасників (можна переслати в WhatsApp): ' + pLink
+      ], 'Відкрити мій дзвінок', adminLink);
+      orgMailed = true;
+    } catch (e) {}
+  }
+  return { id: d.id, adminToken: d.adminToken, mailed: mail.sent, mailFailed: mail.failed, orgMailed: orgMailed };
 }
 
 function getPoll_(id) {
@@ -99,6 +120,7 @@ function getPoll_(id) {
   // пошта учасників не показується нікому; сторінці потрібні лише імена для особистих посилань
   p.invites = (p.invitees || []).map(function (i) { return { id: i.id, name: i.name }; });
   delete p.invitees;
+  delete p.organizerEmail;
   var responses = readAll_(sheet_(RESP, RESP_COLS), RESP_COLS)
     .filter(function (r) { return r.obj.pollId === p.id; })
     .map(function (r) { return respFromRow_(r.obj); });
@@ -106,7 +128,8 @@ function getPoll_(id) {
 }
 
 function respond_(b) {
-  var p = findPoll_(b.id).poll;
+  var found = findPoll_(b.id);
+  var p = found.poll;
   if (isClosed_(p)) throw new Error('Збір відповідей уже завершено');
   var name = str_(b.name, 60);
   if (!name) throw new Error("Вкажіть ім'я");
@@ -128,6 +151,22 @@ function respond_(b) {
   writeRow_(sh, hit ? hit.row : sh.getLastRow() + 1, RESP_COLS, [
     rec.pollId, rec.id, rec.name, JSON.stringify(rec.cells), rec.source, String(rec.updatedAt), String(cells.length)
   ]);
+  // усі очікувані відповіли → лист організатору (один раз)
+  if (p.organizerEmail && !p.notifiedAll && (p.expected || []).length) {
+    var answered = {};
+    rows.forEach(function (r) { answered[norm_(r.obj.name)] = 1; });
+    answered[norm_(name)] = 1;
+    var allIn = p.expected.every(function (n) { return answered[norm_(n)]; });
+    if (allIn) {
+      try {
+        sendNotice_(p.organizerEmail, 'Усі відповіли: «' + p.title + '»', 'Привіт, ' + p.organizer + '!',
+          ['Усі запрошені (' + p.expected.length + ') відмітили зручний час для дзвінка «' + p.title + '». Можна обирати час.'],
+          'Обрати час', p.siteUrl + '?a=' + encodeURIComponent(p.id) + '&t=' + encodeURIComponent(p.adminToken));
+        p.notifiedAll = true;
+        savePoll_(found);
+      } catch (e) {}
+    }
+  }
   return { id: rec.id };
 }
 
@@ -185,7 +224,9 @@ function sendMails_(p, people, isReminder) {
     try {
       var link = base + (i.id ? '&i=' + encodeURIComponent(i.id) : '');
       var m = inviteMail_(p, i.name, link, isReminder);
-      MailApp.sendEmail({ to: i.email, subject: m.subject, body: m.text, htmlBody: m.html, name: 'Спільний час' });
+      var msg = { to: i.email, subject: m.subject, body: m.text, htmlBody: m.html, name: 'Спільний час' };
+      if (p.organizerEmail) msg.replyTo = p.organizerEmail;
+      MailApp.sendEmail(msg);
       res.sent++;
     } catch (e) {
       res.failed.push(i.email);
@@ -254,6 +295,84 @@ function esc_(s) {
   });
 }
 
+/* ---------------- вхід «Мої дзвінки» (без пароля, через лист) ---------------- */
+
+/** Крок 1: надсилає на пошту посилання для входу (діє 30 хвилин). */
+function login_(b) {
+  var email = str_(b.email, 120).toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new Error('Перевірте пошту');
+  var siteUrl = str_(b.siteUrl, 300);
+  if (!/^https?:\/\/[^\s"'<>]+$/.test(siteUrl)) throw new Error('Некоректна адреса сайту');
+  var cache = CacheService.getScriptCache();
+  var rateKey = 'rate_' + email;
+  var sent = Number(cache.get(rateKey) || 0);
+  if (sent >= 5) throw new Error('Забагато спроб. Спробуйте за годину.');
+  cache.put(rateKey, String(sent + 1), 3600);
+  var token = uid_(24);
+  cache.put('magic_' + token, email, 1800);
+  sendNotice_(email, 'Вхід у «Спільний час»', 'Привіт!',
+    ['Натисніть кнопку, щоб побачити всі свої дзвінки. Посилання діє 30 хвилин.', 'Якщо ви не намагалися увійти, просто ігноруйте цей лист.'],
+    'Увійти', siteUrl + '?login=' + token);
+  return { ok: true };
+}
+
+/** Крок 2: обмінює посилання з листа на постійний вхід цього пристрою. */
+function session_(b) {
+  var token = str_(b.token, 40);
+  var cache = CacheService.getScriptCache();
+  var email = token && cache.get('magic_' + token);
+  if (!email) throw new Error('Посилання для входу застаріло або вже використане. Запросіть нове.');
+  cache.remove('magic_' + token);
+  var s = uid_(32);
+  var sh = sheet_(SESS, SESS_COLS);
+  writeRow_(sh, sh.getLastRow() + 1, SESS_COLS, [s, email, String(Date.now())]);
+  return { session: s, email: email };
+}
+
+function emailBySession_(s) {
+  s = str_(s, 40);
+  if (!s) throw new Error('Увійдіть ще раз');
+  var rows = readAll_(sheet_(SESS, SESS_COLS), SESS_COLS);
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].obj.token === s) {
+      if (Date.now() - Number(rows[i].obj.createdAt) > SESSION_DAYS * 864e5) break;
+      return rows[i].obj.email;
+    }
+  }
+  throw new Error('Увійдіть ще раз');
+}
+
+/** Усі дзвінки, створені з цією поштою. */
+function myPolls_(b) {
+  var email = emailBySession_(b.session);
+  var counts = {};
+  readAll_(sheet_(RESP, RESP_COLS), RESP_COLS).forEach(function (r) { counts[r.obj.pollId] = (counts[r.obj.pollId] || 0) + 1; });
+  var polls = readAll_(sheet_(POLLS, POLL_COLS), POLL_COLS)
+    .filter(function (r) { return norm_(r.obj.organizerEmail) === email; })
+    .map(function (r) {
+      var p = pollFromRow_(r.obj);
+      return { id: p.id, adminToken: p.adminToken, title: p.title, createdAt: p.createdAt, deadline: p.deadline,
+        closed: isClosed_(p), final: p.final, repeat: p.repeat, duration: p.duration, tz: p.tz,
+        answered: counts[p.id] || 0, expected: (p.expected || []).length };
+    })
+    .sort(function (a, b2) { return b2.createdAt - a.createdAt; });
+  return { email: email, polls: polls };
+}
+
+/** Короткий службовий лист у тому ж стилі, що й запрошення. */
+function sendNotice_(to, subject, hello, paras, btnText, btnLink) {
+  var text = hello + '\n\n' + paras.join('\n\n') + '\n\n' + btnText + ': ' + btnLink + '\n\n«Спільний час»';
+  var html = '<div style="background:#F4F1EA;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">'
+    + '<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #DCE3EB;border-radius:14px;padding:24px">'
+    + '<div style="font-size:13px;color:#0B1F3B;font-weight:bold;margin-bottom:12px">⏱ Спільний час</div>'
+    + '<p style="font-size:16px;color:#0B1F3B;margin:0 0 12px">' + esc_(hello) + '</p>'
+    + paras.map(function (t) { return '<p style="font-size:15px;line-height:1.5;color:#0B1F3B;margin:0 0 12px">' + esc_(t) + '</p>'; }).join('')
+    + '<a href="' + esc_(btnLink) + '" style="display:inline-block;margin-top:6px;background:#0B1F3B;color:#F4F1EA;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:10px">' + esc_(btnText) + '</a>'
+    + '<p style="font-size:12px;line-height:1.5;color:#5B6B82;margin:18px 0 0">Якщо кнопка не працює: <a href="' + esc_(btnLink) + '" style="color:#0B1F3B">' + esc_(btnLink) + '</a></p>'
+    + '</div></div>';
+  MailApp.sendEmail({ to: to, subject: subject, body: text, htmlBody: html, name: 'Спільний час' });
+}
+
 /* ---------------- валідація ---------------- */
 
 function validatePoll_(b) {
@@ -293,6 +412,8 @@ function validatePoll_(b) {
       d.repeat = { freq: 'week', interval: Number(r.interval) === 2 ? 2 : 1, wds: wds };
     }
   }
+  d.organizerEmail = str_(b.organizerEmail, 120).toLowerCase();
+  if (d.organizerEmail && !EMAIL_RE.test(d.organizerEmail)) throw new Error('Перевірте свою пошту: ' + d.organizerEmail);
   d.siteUrl = str_(b.siteUrl, 300);
   if (!/^https?:\/\/[^\s"'<>]+$/.test(d.siteUrl)) throw new Error('Некоректна адреса сайту');
   if (!d.title) throw new Error('Вкажіть тему дзвінка');
@@ -378,7 +499,8 @@ function pollToRow_(p) {
     p.skipWeekends ? 'TRUE' : 'FALSE', p.deadline, p.tz, JSON.stringify(p.expected || []), p.createdAt,
     p.closedAt || '', p.final ? JSON.stringify(p.final) : '',
     Utilities.formatDate(new Date(Number(p.deadline)), p.tz || 'Europe/Kyiv', 'yyyy-MM-dd HH:mm'),
-    JSON.stringify(p.days || []), JSON.stringify(p.invitees || []), p.siteUrl || '', p.repeat ? JSON.stringify(p.repeat) : ''];
+    JSON.stringify(p.days || []), JSON.stringify(p.invitees || []), p.siteUrl || '', p.repeat ? JSON.stringify(p.repeat) : '',
+    p.organizerEmail || '', p.notifiedAll ? 'TRUE' : ''];
 }
 
 function pollFromRow_(o) {
@@ -388,7 +510,8 @@ function pollFromRow_(o) {
     hourFrom: Number(o.hourFrom), hourTo: Number(o.hourTo), skipWeekends: o.skipWeekends === 'TRUE',
     deadline: Number(o.deadline), tz: o.tz || 'Europe/Kyiv', expected: parse_(o.expected, []),
     createdAt: Number(o.createdAt), closedAt: o.closedAt ? Number(o.closedAt) : null, final: parse_(o.final, null),
-    days: parse_(o.days, []), invitees: parse_(o.invitees, []), siteUrl: o.siteUrl, repeat: parse_(o.repeat, null)
+    days: parse_(o.days, []), invitees: parse_(o.invitees, []), siteUrl: o.siteUrl, repeat: parse_(o.repeat, null),
+    organizerEmail: o.organizerEmail || '', notifiedAll: o.notifiedAll === 'TRUE'
   };
 }
 
