@@ -1018,7 +1018,7 @@ async function viewParticipant(id) {
         e.preventDefault();
         st.name = $('#nm').value.trim();
         if (!st.name) { $('#err').textContent = "Напишіть своє ім'я"; return; }
-        st.step = 'how'; render();
+        st.step = (LIVE && !HAS_GCAL) ? 'pick' : 'how'; st.source = 'manual'; render();
       });
       return;
     }
