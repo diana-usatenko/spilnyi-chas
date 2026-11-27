@@ -102,6 +102,46 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
 .countdown{font-variant-numeric:tabular-nums}
 footer{margin-top:24px;text-align:center;font-size:12px;color:var(--muted)}
 .hide{display:none!important}
+/* --- простий інтерфейс --- */
+.wizard{padding:22px}
+.progress{display:flex;gap:6px;margin-bottom:22px}
+.progress span{flex:1;height:6px;border-radius:3px;background:var(--surface-2)}
+.progress span.on{background:var(--accent)}
+.q{font-size:26px;line-height:1.2;margin:0 0 14px;text-wrap:balance}
+.q2{font-size:19px;margin:22px 0 10px}
+.hint{margin:-6px 0 14px}
+.big-input{font-size:18px!important;padding:14px 16px!important;border-radius:12px!important}
+.big-btn{padding:15px 20px;font-size:17px;border-radius:12px;min-height:52px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 16px;border-radius:14px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);font:inherit;font-weight:600;font-size:16px;cursor:pointer;text-align:left}
+.chip small{font-weight:500;font-size:12px;color:var(--muted)}
+.chip:hover{border-color:var(--accent)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip.on small{color:var(--accent-ink);opacity:.85}
+.chip:disabled{opacity:.4;cursor:not-allowed;border-style:dashed}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav{display:flex;gap:10px;margin-top:8px}
+.nav .btn{flex:1}
+.nav .btn.primary{flex:2}
+.err{color:var(--danger);font-size:14px;font-weight:600;min-height:1.2em;margin:12px 0 6px}
+.linkbtn{display:block;margin:14px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer}
+.summary{margin-top:20px;padding:14px 16px;border-radius:12px;background:var(--surface-2);display:grid;gap:6px;font-size:15px}
+.sum-title{font-weight:700;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.stack{display:grid;gap:10px}
+.center{text-align:center}
+.emoji{font-size:44px;line-height:1;margin-bottom:8px}
+.hero h1{margin:4px 0 6px}
+.best{border:2px solid var(--accent);text-align:center}
+.best .big,.final .big{font-size:26px;font-weight:800;line-height:1.2;margin:8px 0 10px}
+.best .who{font-weight:700;margin-bottom:14px}
+.bottom-bar{position:sticky;bottom:0;padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 30%)}
+details.card summary{cursor:pointer;font-weight:700;font-size:16px;list-style:none}
+details.card summary::-webkit-details-marker{display:none}
+details.card summary::before{content:'▸ ';color:var(--muted)}
+details.card[open] summary::before{content:'▾ '}
+details.card h3{font-size:15px;margin:18px 0 8px}
+.slot .body{flex:1;min-width:0}
+
 .unit{display:flex;align-items:center;gap:8px}
 .unit input{flex:1;min-width:0}
 .cal{border:1px solid var(--border);border-radius:12px;padding:10px;max-width:360px}
@@ -528,234 +568,276 @@ const app = $('#app');
 const MONTHS_NOM = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
 const EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]+$/;
 const MAX_DAYS = 31;
-
-/** Значення для <input type="datetime-local"> у місцевому часі. */
 const toLocalInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const roundHour = ms => { const d = new Date(ms); d.setMinutes(0, 0, 0); return d.getTime() + 3600e3; };
 
+/* Готові варіанти: людина натискає кнопку, а не заповнює поля */
+const PART_OPTS = [
+  { id: 'morning', label: '☀️ Зранку', sub: '9:00–12:00', from: 9, to: 12 },
+  { id: 'day', label: '🌤 Вдень', sub: '12:00–17:00', from: 12, to: 17 },
+  { id: 'evening', label: '🌙 Ввечері', sub: '17:00–21:00', from: 17, to: 21 },
+  { id: 'all', label: '🕘 Будь-коли', sub: '9:00–21:00', from: 9, to: 21 },
+  { id: 'custom', label: '✏️ Свій час', sub: 'з … до …' }
+];
+const DUR_OPTS = [
+  { v: 30, label: '30 хв' }, { v: 60, label: '1 година' }, { v: 90, label: '1,5 години' }, { v: 120, label: '2 години' }, { v: 'custom', label: 'Інше' }
+];
+const DL_OPTS = [
+  { v: 24, label: 'Завтра', sub: 'через 24 години' }, { v: 48, label: 'Через 2 дні' }, { v: 72, label: 'Через 3 дні' }, { v: 'custom', label: '📅 Обрати дату' }
+];
+const chip = (group, value, label, on, sub = '') =>
+  `<button type="button" class="chip${on ? ' on' : ''}" data-g="${group}" data-v="${esc(value)}" aria-pressed="${on}">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+
+/* ======================= ОРГАНІЗАТОР: майстер з 5 кроків ======================= */
 function viewCreate() {
   const today = todayLocal();
-  const st = { days: new Set(), month: today.slice(0, 8) + '01' };
-
-  app.innerHTML = `
-  <div class="card">
-    <h1>Новий дзвінок</h1>
-    <p class="muted">Оберіть дні й години, коли можна провести дзвінок. Учасники відмітять, коли їм зручно, а система покаже найкращий час.</p>
-  </div>
-  <form class="card" id="f" novalidate>
-    <div class="field"><label for="title">Тема дзвінка</label>
-      <input type="text" id="title" maxlength="120" placeholder="Напр., Спільна закупівля на грудень"></div>
-    <div class="field"><label for="org">Ваше ім'я</label>
-      <input type="text" id="org" maxlength="60" placeholder="Організатор"></div>
-
-    <div class="field"><label for="dur">Тривалість дзвінка</label>
-      <div class="row" style="gap:8px">
-        <select id="dur" style="flex:1 1 160px">
-          <option value="30">30 хв</option><option value="45">45 хв</option><option value="60" selected>1 година</option>
-          <option value="90">1,5 години</option><option value="120">2 години</option><option value="custom">Інша тривалість…</option>
-        </select>
-        <div class="unit hide" id="durCWrap" style="flex:1 1 140px"><input type="number" id="durC" min="15" max="480" step="5" placeholder="напр., 75" inputmode="numeric"><span>хв</span></div>
-      </div>
-    </div>
-
-    <div class="field"><label>Оберіть дні</label>
-      <p class="small muted" style="margin:-2px 0 8px">Натисніть на дні в календарі, коли можна провести дзвінок.</p>
-      <div class="cal" id="cal"></div>
-      <div class="actions" style="margin-top:8px">
-        <button type="button" class="btn sm" id="qWork">+ Наступні 5 робочих днів</button>
-        <button type="button" class="btn sm" id="qClear">Очистити</button>
-      </div>
-      <p class="small" id="daysSum" style="margin:8px 0 0"></p>
-    </div>
-
-    <div class="field"><label>Оберіть години</label>
-      <div class="row" style="gap:8px;align-items:center">
-        <span class="small muted">з</span><select id="hf" style="flex:1 1 100px" aria-label="Година початку">${hourOpts(10)}</select>
-        <span class="small muted">до</span><select id="ht" style="flex:1 1 100px" aria-label="Година кінця">${hourOpts(20, 1)}</select>
-      </div>
-      <p class="small muted" style="margin:6px 0 0">Поза цими годинами учасники не зможуть нічого відмітити.</p>
-    </div>
-
-    <div class="field"><label for="dl">Голосування триває до</label>
-      <input type="datetime-local" id="dl" value="${toLocalInput(roundHour(Date.now() + 48 * 3600e3))}" min="${toLocalInput(Date.now())}">
-      <div class="actions" style="margin-top:8px">
-        <button type="button" class="btn sm" data-dl="24">через 24 год</button>
-        <button type="button" class="btn sm" data-dl="48">через 48 год</button>
-        <button type="button" class="btn sm" data-dl="72">через 3 дні</button>
-      </div>
-    </div>
-
-    <div class="field"><label>Хто має відповісти <span class="muted">(необов'язково)</span></label>
-      <p class="small muted" style="margin:-2px 0 8px">Якщо вказати пошту, людина отримає лист із запрошенням і посиланням${LIVE ? '' : ' (у демо-режимі листи не надсилаються)'}. Також буде видно, хто ще не відповів.</p>
-      <div id="inv"></div>
-      <button type="button" class="btn sm" id="addInv">+ Додати учасника</button>
-    </div>
-
-    <p class="small" id="err" role="alert" style="color:var(--danger)"></p>
-    <button class="btn primary block" type="submit">Створити й надіслати запрошення</button>
-  </form>`;
-
-  /* --- тривалість --- */
-  $('#dur').addEventListener('change', () => {
-    const c = $('#dur').value === 'custom';
-    $('#durCWrap').classList.toggle('hide', !c);
-    if (c) $('#durC').focus();
+  const st = viewCreate.st || (viewCreate.st = {
+    step: 1, title: '', organizer: safeLS.get('cp_name') || '', days: new Set(), month: today.slice(0, 8) + '01',
+    part: 'evening', hf: 17, ht: 21, dur: 60, durC: '', dl: 48, dlC: '', invitees: [{ name: '', email: '' }]
   });
+  const TOTAL = 5;
 
-  /* --- календар днів --- */
-  const drawCal = () => {
-    const first = dObj(st.month);
-    const y = first.getUTCFullYear(), mo = first.getUTCMonth();
-    const lead = (first.getUTCDay() + 6) % 7; // понеділок — перший день тижня
-    const daysIn = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
-    const maxDay = addDays(today, 90);
-    const canPrev = st.month > today.slice(0, 8) + '01';
-    let h = `<div class="cal-head">
-      <button type="button" class="btn sm" data-m="-1" ${canPrev ? '' : 'disabled'} aria-label="Попередній місяць">‹</button>
-      <b>${MONTHS_NOM[mo]} ${y}</b>
-      <button type="button" class="btn sm" data-m="1" aria-label="Наступний місяць">›</button></div>
-      <div class="cal-grid">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'].map(w => `<span class="cal-w">${w}</span>`).join('')}`;
-    for (let i = 0; i < lead; i++) h += '<span></span>';
-    for (let n = 1; n <= daysIn; n++) {
-      const d = `${y}-${pad(mo + 1)}-${pad(n)}`;
-      const off = d < today || d > maxDay;
-      const wd = dObj(d).getUTCDay();
-      h += `<button type="button" class="cal-d${st.days.has(d) ? ' on' : ''}${wd === 0 || wd === 6 ? ' we' : ''}${d === today ? ' today' : ''}" data-d="${d}" ${off ? 'disabled' : ''} aria-pressed="${st.days.has(d)}">${n}</button>`;
+  const stepHtml = () => {
+    switch (st.step) {
+      case 1: return `
+        <h1 class="q">Про що дзвінок?</h1>
+        <div class="field"><input type="text" id="title" class="big-input" maxlength="120" placeholder="Напр., Спільна закупівля" value="${esc(st.title)}"></div>
+        <h2 class="q2">Як вас звати?</h2>
+        <div class="field"><input type="text" id="org" class="big-input" maxlength="60" placeholder="Ваше ім'я" value="${esc(st.organizer)}"></div>`;
+      case 2: return `
+        <h1 class="q">У які дні можна?</h1>
+        <p class="muted hint">Натисніть на дні. Можна кілька.</p>
+        <div class="cal" id="cal"></div>
+        <div class="chips" style="margin-top:12px"><button type="button" class="chip" id="qWork">Наступні 5 робочих днів</button><button type="button" class="chip" id="qClear">Очистити</button></div>
+        <p class="small" id="daysSum" style="margin:12px 0 0"></p>`;
+      case 3: return `
+        <h1 class="q">О котрій?</h1>
+        <div class="chips">${PART_OPTS.map(o => chip('part', o.id, o.label, st.part === o.id, o.sub)).join('')}</div>
+        <div class="row ${st.part === 'custom' ? '' : 'hide'}" id="customHours" style="gap:8px;align-items:center;margin-top:12px">
+          <span class="muted">з</span><select id="hf" style="flex:1" aria-label="З якої години">${hourOpts(st.hf)}</select>
+          <span class="muted">до</span><select id="ht" style="flex:1" aria-label="До якої години">${hourOpts(st.ht, 1)}</select>
+        </div>
+        <h2 class="q2">Скільки триватиме?</h2>
+        <div class="chips">${DUR_OPTS.map(o => chip('dur', o.v, o.label, st.dur === o.v)).join('')}</div>
+        <div class="unit ${st.dur === 'custom' ? '' : 'hide'}" id="durCWrap" style="margin-top:12px;max-width:220px"><input type="number" id="durC" min="15" max="480" step="5" inputmode="numeric" placeholder="напр., 75" value="${esc(st.durC)}"><span>хвилин</span></div>`;
+      case 4: return `
+        <h1 class="q">Кого запросити?</h1>
+        <p class="muted hint">Якщо вказати пошту, ми самі надішлемо людині запрошення${LIVE ? '' : ' (у демо-режимі листи не надсилаються)'}. Можна пропустити.</p>
+        <div id="inv"></div>
+        <button type="button" class="chip" id="addInv">＋ Ще людина</button>`;
+      case 5: return `
+        <h1 class="q">До коли чекаємо відповіді?</h1>
+        <div class="chips">${DL_OPTS.map(o => dlOk(o.v)
+          ? chip('dl', o.v, o.label, st.dl === o.v, o.sub || '')
+          : `<button type="button" class="chip" disabled>${esc(o.label)}<small>надто пізно</small></button>`).join('')}</div>
+        <div class="${st.dl === 'custom' ? '' : 'hide'}" id="dlCWrap" style="margin-top:12px"><input type="datetime-local" id="dlC" value="${esc(st.dlC || toLocalInput(roundHour(Date.now() + 48 * 3600e3)))}" min="${toLocalInput(Date.now())}"></div>
+        <div class="summary" id="summary"></div>`;
     }
-    $('#cal').innerHTML = h + '</div>';
-    const list = [...st.days].sort();
-    $('#daysSum').innerHTML = list.length
-      ? `<b>Обрано ${plural(list.length, 'день', 'дні', 'днів')}:</b> <span class="muted">${list.map(d => esc(fmtDay(d).replace(',', ''))).join(' · ')}</span>`
-      : '<span class="muted">Ще не обрано жодного дня</span>';
   };
-  $('#cal').addEventListener('click', e => {
-    const m = e.target.closest('[data-m]');
-    if (m) { const d = dObj(st.month); d.setUTCMonth(d.getUTCMonth() + +m.dataset.m); st.month = isoDate(d).slice(0, 8) + '01'; drawCal(); return; }
-    const b = e.target.closest('[data-d]');
-    if (!b || b.disabled) return;
-    const d = b.dataset.d;
-    if (st.days.has(d)) st.days.delete(d);
-    else if (st.days.size >= MAX_DAYS) { toast(`Можна обрати до ${MAX_DAYS} днів`); return; }
-    else st.days.add(d);
-    drawCal();
-  });
-  $('#qWork').addEventListener('click', () => {
-    let d = today, added = 0;
-    while (added < 5 && st.days.size < MAX_DAYS) {
-      d = addDays(d, 1);
-      const wd = dObj(d).getUTCDay();
-      if (wd !== 0 && wd !== 6) { st.days.add(d); added++; }
+
+  const save = () => {
+    if (st.step === 1) { st.title = $('#title').value.trim(); st.organizer = $('#org').value.trim(); }
+    if (st.step === 3) { if ($('#hf')) { st.hf = +$('#hf').value; st.ht = +$('#ht').value; } if ($('#durC')) st.durC = $('#durC').value; }
+    if (st.step === 4) st.invitees = [...$('#inv').querySelectorAll('.inv-row')].map(r => ({ name: r.querySelector('.inv-n').value.trim(), email: r.querySelector('.inv-e').value.trim() }));
+    if (st.step === 5 && $('#dlC')) st.dlC = $('#dlC').value;
+  };
+  const hours = () => st.part === 'custom' ? [st.hf, st.ht] : (o => [o.from, o.to])(PART_OPTS.find(o => o.id === st.part));
+  const duration = () => st.dur === 'custom' ? Math.round(Number(st.durC)) : st.dur;
+  const lastEnd = () => { const days = [...st.days].sort(); return new Date(days[days.length - 1] + 'T00:00').getTime() + hours()[1] * 3600e3; };
+  const presetDl = v => roundHour(Date.now() + v * 3600e3) - 3600e3;
+  const dlOk = v => v === 'custom' || presetDl(v) < lastEnd();
+  const deadline = () => st.dl === 'custom' ? (st.dlC ? new Date(st.dlC).getTime() : NaN) : presetDl(st.dl);
+
+  const check = () => {
+    if (st.step === 1) {
+      if (!st.title) return 'Напишіть, про що дзвінок';
+      if (!st.organizer) return "Напишіть своє ім'я";
     }
-    st.month = [...st.days].sort()[0].slice(0, 8) + '01';
-    drawCal();
-  });
-  $('#qClear').addEventListener('click', () => { st.days.clear(); drawCal(); });
-  drawCal();
-
-  /* --- дедлайн --- */
-  app.querySelectorAll('[data-dl]').forEach(b => b.addEventListener('click', () => {
-    $('#dl').value = toLocalInput(roundHour(Date.now() + +b.dataset.dl * 3600e3));
-  }));
-
-  /* --- учасники --- */
-  const addRow = (name = '', email = '') => {
-    const r = document.createElement('div');
-    r.className = 'inv-row';
-    r.innerHTML = `<input type="text" class="inv-n" maxlength="60" placeholder="Ім'я" aria-label="Ім'я учасника" value="${esc(name)}">
-      <input type="email" class="inv-e" maxlength="120" placeholder="пошта (необов'язково)" aria-label="Пошта учасника" value="${esc(email)}" inputmode="email" autocomplete="off">
-      <button type="button" class="btn sm inv-x" aria-label="Прибрати">✕</button>`;
-    r.querySelector('.inv-x').addEventListener('click', () => { r.remove(); if (!$('#inv').children.length) addRow(); });
-    $('#inv').appendChild(r);
-    return r;
+    if (st.step === 2 && !st.days.size) return 'Натисніть хоча б на один день';
+    if (st.step === 3) {
+      const [f, t] = hours(), d = duration();
+      if (t <= f) return 'Кінець має бути пізніше за початок';
+      if (!Number.isFinite(d) || d < 15 || d > 480) return 'Тривалість — від 15 хвилин до 8 годин';
+      if (d > (t - f) * 60) return 'Дзвінок не вміщається в ці години. Оберіть інший час або коротший дзвінок';
+    }
+    if (st.step === 4) {
+      const bad = st.invitees.find(i => i.email && !EMAIL_RE.test(i.email));
+      if (bad) return `Здається, в пошті помилка: ${bad.email}`;
+    }
+    if (st.step === 5) {
+      const dl = deadline(), days = [...st.days].sort(), [, t] = hours();
+      if (!Number.isFinite(dl) || dl <= Date.now()) return 'Оберіть час у майбутньому';
+      const lastEnd = new Date(days[days.length - 1] + 'T00:00').getTime() + t * 3600e3;
+      if (dl >= lastEnd) return 'Відповіді треба зібрати раніше, ніж останній обраний день. Оберіть коротший термін';
+    }
+    return '';
   };
-  addRow(); addRow();
-  $('#addInv').addEventListener('click', () => {
-    if ($('#inv').children.length >= 30) { toast('До 30 учасників'); return; }
-    addRow().querySelector('.inv-n').focus();
-  });
 
-  /* --- збереження --- */
-  $('#f').addEventListener('submit', async e => {
-    e.preventDefault();
-    const durRaw = $('#dur').value === 'custom' ? $('#durC').value : $('#dur').value;
-    const dlVal = $('#dl').value;
-    const invitees = [];
-    let invErr = '';
-    $('#inv').querySelectorAll('.inv-row').forEach(r => {
-      let name = r.querySelector('.inv-n').value.trim();
-      const email = r.querySelector('.inv-e').value.trim();
-      if (!name && !email) return;
-      if (email && !EMAIL_RE.test(email)) invErr = invErr || `Перевірте пошту: ${email}`;
-      if (!name) name = email.split('@')[0];
-      invitees.push({ name, email });
+  const render = () => {
+    app.innerHTML = `
+    <div class="wizard card">
+      <div class="progress" aria-label="Крок ${st.step} з ${TOTAL}">${Array.from({ length: TOTAL }, (_, i) => `<span class="${i < st.step ? 'on' : ''}"></span>`).join('')}</div>
+      <form id="f" novalidate>
+        ${stepHtml()}
+        <p class="err" id="err" role="alert"></p>
+        <div class="nav">
+          ${st.step > 1 ? '<button type="button" class="btn big-btn" id="back">← Назад</button>' : ''}
+          <button type="submit" class="btn primary big-btn" id="next">${st.step < TOTAL ? 'Далі →' : '✓ Створити'}</button>
+        </div>
+        ${st.step === 4 ? '<button type="button" class="linkbtn" id="skip">Пропустити</button>' : ''}
+      </form>
+    </div>`;
+    bind();
+    const first = app.querySelector('.big-input');
+    if (first && !first.value) first.focus();
+  };
+
+  const bind = () => {
+    $('#back')?.addEventListener('click', () => { save(); st.step--; render(); });
+    $('#skip')?.addEventListener('click', () => { st.invitees = [{ name: '', email: '' }]; st.step++; render(); });
+    app.querySelectorAll('.chip[data-g]').forEach(b => b.addEventListener('click', () => {
+      save();
+      const g = b.dataset.g, raw = b.dataset.v, v = /^\d+$/.test(raw) ? +raw : raw;
+      st[g] = v;
+      render();
+      if (g === 'dur' && v === 'custom') $('#durC').focus();
+    }));
+    if (st.step === 2) bindCal();
+    if (st.step === 4) bindInv();
+    if (st.step === 5) $('#summary').innerHTML = summaryHtml();
+    $('#f').addEventListener('submit', async e => {
+      e.preventDefault();
+      save();
+      const err = check();
+      if (err) { $('#err').textContent = err; return; }
+      if (st.step < TOTAL) {
+        st.step++;
+        if (st.step === 5 && !dlOk(st.dl)) st.dl = [48, 24].find(dlOk) || 'custom';
+        render(); window.scrollTo(0, 0); return;
+      }
+      await submit();
     });
-    const days = [...st.days].sort();
+  };
+
+  const bindCal = () => {
+    const drawCal = () => {
+      const first = dObj(st.month);
+      const y = first.getUTCFullYear(), mo = first.getUTCMonth();
+      const lead = (first.getUTCDay() + 6) % 7;
+      const daysIn = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+      const maxDay = addDays(today, 90);
+      const canPrev = st.month > today.slice(0, 8) + '01';
+      let h = `<div class="cal-head">
+        <button type="button" class="btn sm" data-m="-1" ${canPrev ? '' : 'disabled'} aria-label="Попередній місяць">‹</button>
+        <b>${MONTHS_NOM[mo]} ${y}</b>
+        <button type="button" class="btn sm" data-m="1" aria-label="Наступний місяць">›</button></div>
+        <div class="cal-grid">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'].map(w => `<span class="cal-w">${w}</span>`).join('')}`;
+      for (let i = 0; i < lead; i++) h += '<span></span>';
+      for (let n = 1; n <= daysIn; n++) {
+        const d = `${y}-${pad(mo + 1)}-${pad(n)}`;
+        const off = d < today || d > maxDay;
+        const wd = dObj(d).getUTCDay();
+        h += `<button type="button" class="cal-d${st.days.has(d) ? ' on' : ''}${wd === 0 || wd === 6 ? ' we' : ''}${d === today ? ' today' : ''}" data-d="${d}" ${off ? 'disabled' : ''} aria-pressed="${st.days.has(d)}">${n}</button>`;
+      }
+      $('#cal').innerHTML = h + '</div>';
+      const list = [...st.days].sort();
+      $('#daysSum').innerHTML = list.length
+        ? `✓ <b>${plural(list.length, 'день', 'дні', 'днів')}:</b> <span class="muted">${list.map(d => esc(fmtDay(d).replace(',', ''))).join(' · ')}</span>`
+        : '';
+    };
+    $('#cal').addEventListener('click', e => {
+      const m = e.target.closest('[data-m]');
+      if (m) { const d = dObj(st.month); d.setUTCMonth(d.getUTCMonth() + +m.dataset.m); st.month = isoDate(d).slice(0, 8) + '01'; drawCal(); return; }
+      const b = e.target.closest('[data-d]');
+      if (!b || b.disabled) return;
+      const d = b.dataset.d;
+      if (st.days.has(d)) st.days.delete(d);
+      else if (st.days.size >= MAX_DAYS) { toast(`Можна обрати до ${MAX_DAYS} днів`); return; }
+      else st.days.add(d);
+      $('#err').textContent = '';
+      drawCal();
+    });
+    $('#qWork').addEventListener('click', () => {
+      let d = today, added = 0;
+      while (added < 5 && st.days.size < MAX_DAYS) {
+        d = addDays(d, 1);
+        const wd = dObj(d).getUTCDay();
+        if (wd !== 0 && wd !== 6) { st.days.add(d); added++; }
+      }
+      st.month = [...st.days].sort()[0].slice(0, 8) + '01';
+      $('#err').textContent = '';
+      drawCal();
+    });
+    $('#qClear').addEventListener('click', () => { st.days.clear(); drawCal(); });
+    drawCal();
+  };
+
+  const bindInv = () => {
+    const addRow = (name = '', email = '') => {
+      const r = document.createElement('div');
+      r.className = 'inv-row';
+      r.innerHTML = `<input type="text" class="inv-n" maxlength="60" placeholder="Ім'я" aria-label="Ім'я" value="${esc(name)}">
+        <input type="email" class="inv-e" maxlength="120" placeholder="Пошта" aria-label="Пошта" value="${esc(email)}" inputmode="email" autocomplete="off">
+        <button type="button" class="btn sm inv-x" aria-label="Прибрати">✕</button>`;
+      r.querySelector('.inv-x').addEventListener('click', () => { r.remove(); if (!$('#inv').children.length) addRow(); });
+      $('#inv').appendChild(r);
+      return r;
+    };
+    (st.invitees.length ? st.invitees : [{}]).forEach(i => addRow(i.name, i.email));
+    $('#addInv').addEventListener('click', () => {
+      if ($('#inv').children.length >= 30) { toast('До 30 людей'); return; }
+      addRow().querySelector('.inv-n').focus();
+    });
+  };
+
+  const summaryHtml = () => {
+    const [f, t] = hours(), days = [...st.days].sort();
+    const people = st.invitees.filter(i => i.name || i.email);
+    return `<div class="sum-title">Перевірте:</div>
+      <div>📞 <b>${esc(st.title)}</b></div>
+      <div>🗓 ${days.map(d => esc(fmtDay(d).replace(',', ''))).join(' · ')}</div>
+      <div>🕘 ${pad(f)}:00–${pad(t)}:00 · ${duration()} хв</div>
+      <div>👥 ${people.length ? esc(people.map(i => i.name || i.email.split('@')[0]).join(', ')) : 'надішлете посилання самі'}</div>`;
+  };
+
+  const submit = async () => {
+    const [f, t] = hours(), days = [...st.days].sort();
+    const invitees = st.invitees.filter(i => i.name || i.email).map(i => ({ name: i.name || i.email.split('@')[0], email: i.email }));
     const data = {
-      title: $('#title').value.trim(), organizer: $('#org').value.trim(),
-      duration: Math.round(Number(durRaw)), days, dateFrom: days[0] || '', dateTo: days[days.length - 1] || '',
-      hourFrom: +$('#hf').value, hourTo: +$('#ht').value,
-      deadline: dlVal ? new Date(dlVal).getTime() : NaN, tz: TZ,
-      invitees, expected: invitees.map(i => i.name),
+      title: st.title, organizer: st.organizer, duration: duration(), days, dateFrom: days[0], dateTo: days[days.length - 1],
+      hourFrom: f, hourTo: t, deadline: deadline(), tz: TZ, invitees, expected: invitees.map(i => i.name),
       siteUrl: location.href.split(/[?#]/)[0]
     };
-    const err = invErr || validatePoll(data);
-    if (err) { $('#err').textContent = err; return; }
-    const btn = $('#f button[type=submit]');
-    btn.disabled = true; btn.textContent = invitees.some(i => i.email) && LIVE ? 'Створюємо й надсилаємо листи…' : 'Створюємо…';
-    $('#err').textContent = '';
+    const btn = $('#next');
+    btn.disabled = true; btn.textContent = invitees.some(i => i.email) && LIVE ? 'Надсилаємо запрошення…' : 'Створюємо…';
     try {
       const res = await Store.createPoll(data);
       safeLS.set('cp_admin_' + res.id, res.adminToken);
+      safeLS.set('cp_name', st.organizer);
+      viewCreate.st = null;
       justCreated = { ...res, hadEmails: invitees.some(i => i.email) };
       Nav.go({ a: res.id, t: res.adminToken });
-    } catch (ex) { $('#err').textContent = ex.message; btn.disabled = false; btn.textContent = 'Створити й надіслати запрошення'; }
-  });
+    } catch (ex) { $('#err').textContent = ex.message; btn.disabled = false; btn.textContent = '✓ Створити'; }
+  };
+
+  render();
 }
 function hourOpts(sel, shift = 0) { let s = ''; for (let h = 0 + shift; h <= 23 + shift; h++) s += `<option value="${h}"${h === sel ? ' selected' : ''}>${pad(h)}:00</option>`; return s; }
-function validatePoll(d) {
-  if (!d.title) return 'Вкажіть тему дзвінка';
-  if (!d.organizer) return "Вкажіть своє ім'я";
-  if (!Number.isFinite(d.duration) || d.duration < 15 || d.duration > 480) return 'Тривалість має бути від 15 хвилин до 8 годин';
-  if (!d.days.length) return 'Оберіть у календарі хоча б один день';
-  if (d.hourTo <= d.hourFrom) return 'Кінцева година має бути пізніше за початкову';
-  if (d.duration > (d.hourTo - d.hourFrom) * 60) return 'Дзвінок довший, ніж вибрані години. Розширте години або зменште тривалість';
-  if (!Number.isFinite(d.deadline)) return 'Вкажіть, до коли триває голосування';
-  if (d.deadline <= Date.now()) return 'Час завершення голосування вже минув. Оберіть пізніший';
-  if (d.deadline > Date.now() + 30 * 864e5) return 'Голосування може тривати не довше 30 днів';
-  const lastEnd = new Date(d.days[d.days.length - 1] + 'T00:00').getTime() + d.hourTo * 3600e3;
-  if (d.deadline >= lastEnd) return 'Голосування має закінчитися раніше, ніж останній обраний день';
-  return '';
-}
-
-function headerCard(poll, responses, extra = '') {
-  const closed = isClosed(poll);
-  return `<div class="card">
-    <h1>${esc(poll.title)}</h1>
-    <p class="muted" style="margin:0">Організатор: ${esc(poll.organizer)} · ${poll.duration} хв · ${pad(poll.hourFrom)}:00–${pad(poll.hourTo)}:00 · ${plural(pollDays(poll).length, 'день', 'дні', 'днів')} (${esc(fmtDay(pollDays(poll)[0]))} – ${esc(fmtDay(pollDays(poll).slice(-1)[0]))})</p>
-    <p class="small muted" style="margin:4px 0 0">Голосування до ${esc(fmtDeadline(poll.deadline))}</p>
-    <div class="meta">
-      ${poll.final ? '<span class="pill ok">✓ Час обрано</span>'
-        : closed ? '<span class="pill">Збір завершено</span>'
-        : `<span class="pill warn">⏳ До кінця збору: <span class="countdown" data-countdown></span></span>`}
-      <span class="pill">Відповіли: ${responses.length}${poll.expected?.length ? ' з ' + (responses.length + missingPeople(poll, responses).length) : ''}</span>
-    </div>
-    ${extra}
-  </div>`;
-}
 
 function finalCard(poll, forAdmin) {
   const f = poll.final;
   const start = f.start, d = f.date;
   const g = gcalLink(poll, d, start);
   return `<div class="card final">
+    <div class="emoji">🎉</div>
     <div class="muted">Дзвінок призначено</div>
-    <div class="big">${esc(fmtDayLong(d))}, ${hm(start)}–${hm(start + poll.duration)}</div>
+    <div class="big">${esc(fmtDayLong(d))}<br>${hm(start)}–${hm(start + poll.duration)}</div>
     <p class="muted">${esc(poll.title)} · час за Києвом</p>
     ${f.link ? `<p><a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.link)}</a></p>` : ''}
-    <div class="actions" style="justify-content:center">
-      <a class="btn primary" href="${esc(g)}" target="_blank" rel="noopener">📅 Додати в Google Calendar</a>
-      ${forAdmin ? `<a class="btn wa" href="${esc(waLink(finalText(poll)))}" target="_blank" rel="noopener">Надіслати в WhatsApp</a>
-      <button class="btn" id="unfinal">Обрати інший час</button>` : ''}
+    <div class="stack">
+      <a class="btn primary big-btn" href="${esc(g)}" target="_blank" rel="noopener">📅 Додати в мій календар</a>
+      ${forAdmin ? `<a class="btn wa big-btn" href="${esc(waLink(finalText(poll)))}" target="_blank" rel="noopener">Повідомити в WhatsApp</a>
+      <button class="linkbtn" id="unfinal">Обрати інший час</button>` : ''}
     </div>
   </div>`;
 }
@@ -774,129 +856,132 @@ function finalText(poll) {
   return `📞 Дзвінок «${poll.title}» призначено!\n🗓 ${fmtDayLong(f.date)}, ${hm(f.start)}–${hm(f.start + poll.duration)} (за Києвом)`
     + (f.link ? `\n🔗 ${f.link}` : '') + `\n\nДодати в календар: ${gcalLink(poll, f.date, f.start)}`;
 }
+const whenText = poll => `${poll.duration} хв · ${pad(poll.hourFrom)}:00–${pad(poll.hourTo)}:00`;
 
-/* ---- сторінка учасника ---- */
+/* ======================= УЧАСНИК ======================= */
 async function viewParticipant(id) {
   const { poll, responses } = await Store.getPoll(id);
   const meId = safeLS.get('cp_me_' + id);
   const me = responses.find(r => r.id === meId);
   const closed = isClosed(poll);
   const adminTok = safeLS.get('cp_admin_' + id);
+  const invited = (poll.invites || []).find(x => x.id === Nav.params.i);
+  const adminLink = adminTok ? `<p class="center small" style="margin-top:16px"><a ${navAttrs({ a: id, t: adminTok })}>→ Відкрити панель організатора</a></p>` : '';
 
-  if (poll.final) {
-    app.innerHTML = headerCard(poll, responses) + finalCard(poll, false);
+  const intro = `<div class="card hero">
+    <div class="muted">${esc(poll.organizer)} запрошує на дзвінок</div>
+    <h1>${esc(poll.title)}</h1>
+    <div class="muted small">${esc(whenText(poll))}</div>
+  </div>`;
+
+  if (poll.final) { app.innerHTML = intro + finalCard(poll, false) + adminLink; return; }
+  if (closed) {
+    app.innerHTML = intro + `<div class="card center"><div class="emoji">⏳</div><h2>Голосування завершено</h2><p class="muted">Організатор скоро обере час.</p></div>` + adminLink;
     return;
   }
 
-  const state = { selected: new Set(me ? me.cells : []), busy: null, source: me?.source || 'manual', tab: closed ? 'heat' : 'mine' };
-  const invited = (poll.invites || []).find(x => x.id === Nav.params.i);
-  const presetName = me?.name || invited?.name || safeLS.get('cp_name') || '';
-  const showCal = HAS_GCAL || !LIVE;
-  if (HAS_GCAL && !closed) GCal.load().catch(() => {});
+  const st = viewParticipant.st && viewParticipant.st.id === id ? viewParticipant.st : (viewParticipant.st = {
+    id, step: me ? 'done' : 'name', name: me?.name || invited?.name || safeLS.get('cp_name') || '',
+    selected: new Set(me ? me.cells : []), busy: null, source: me?.source || 'manual'
+  });
 
-  app.innerHTML = headerCard(poll, responses,
-    adminTok ? `<p class="small" style="margin:10px 0 0"><a ${navAttrs({ a: id, t: adminTok })}>→ Панель організатора</a></p>` : '') + `
-  ${closed ? `<div class="banner">Збір відповідей завершено. Організатор скоро обере час.</div>` : `
-  <div class="card">
-    <div class="field"><label for="nm">Ваше ім'я</label>
-      <input type="text" id="nm" maxlength="60" placeholder="Як вас звати?" value="${esc(presetName)}"></div>
-    <button class="btn ${me ? '' : 'primary '}block${showCal ? '' : ' hide'}" id="gcal">${HAS_GCAL ? '📅 Підключити Google Calendar' : '📅 Приклад з календарем (демо)'}</button>
-    <p class="small muted${showCal ? '' : ' hide'}" style="margin:8px 0 0" id="gcalNote">Один клік, і ваші вільні слоти позначаться самі. Ми бачимо лише «зайнято / вільно» у вибрані дні, без назв і змісту подій, і нічого не зберігаємо з вашого календаря.${HAS_GCAL ? '' : ' <b>Зараз це демо:</b> зайнятість вигадана, справжній календар не підключено.'}</p>
-    <p class="small muted" style="margin:10px 0 0">Або просто відмітьте зручний час у сітці нижче.</p>
-  </div>`}
-  <div class="card">
-    <div class="tabs"><button data-tab="mine" class="${state.tab === 'mine' ? 'on' : ''}" ${closed ? 'disabled' : ''}>Мій час</button><button data-tab="heat" class="${state.tab === 'heat' ? 'on' : ''}">Як зручно всім</button></div>
-    <p class="small muted" id="hint"></p>
-    <div class="grid-wrap" id="grid"></div>
-    <div class="legend" id="legend"></div>
-  </div>
-  ${closed ? '' : `<div class="card" style="position:sticky;bottom:8px;z-index:2">
-    <div style="display:flex;gap:10px;align-items:center">
-      <div style="flex:1" class="small"><b id="cnt">0</b> <span class="muted">слотів вибрано</span></div>
-      <button class="btn primary" id="save">${me ? 'Оновити відповідь' : 'Готово'}</button>
-    </div>
-  </div>`}`;
-
-  const draw = () => {
-    $('#hint').textContent = state.tab === 'mine'
-      ? 'Торкніться або проведіть пальцем по клітинках, коли вам зручно. Натисніть на день, щоб виділити його повністю.'
-      : 'Чим темніший колір, тим більше людям зручно. Цифра означає, скільки людей можуть у цей час.';
-    if (state.tab === 'mine') {
-      renderGrid($('#grid'), poll, { mode: 'edit', selected: state.selected, busy: state.busy, onChange: updCnt });
-      $('#legend').innerHTML = `<span><i style="background:var(--sel)"></i>мені зручно</span>${state.busy ? '<span><i style="background:repeating-linear-gradient(135deg,var(--busy) 0 3px,transparent 3px 6px)"></i>зайнято в календарі</span>' : ''}`;
-    } else {
-      renderGrid($('#grid'), poll, { mode: 'heat', responses });
-      $('#legend').innerHTML = `<span><i style="background:rgba(var(--heat-rgb),.25)"></i>мало кому</span><span><i style="background:rgba(var(--heat-rgb),1)"></i>усім</span>`;
-    }
-    updCnt();
-  };
-  const updCnt = () => { const c = $('#cnt'); if (c) c.textContent = state.selected.size; };
-  app.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
-    state.tab = b.dataset.tab;
-    app.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === b));
-    draw();
-  }));
-  draw();
-  if (!closed) startTicker(poll.deadline, () => route());
-
-  if (closed) return;
-  const applyBusy = busySet => {
-    state.busy = busySet;
-    state.selected.clear();
-    for (const d of pollDays(poll)) for (const m of pollTimes(poll)) { const k = cellKey(d, m); if (!state.busy.has(k)) state.selected.add(k); }
-    state.source = 'google'; state.tab = 'mine';
-    app.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x.dataset.tab === 'mine'));
-    $('#gcal').textContent = HAS_GCAL ? '✓ Календар підключено' : '✓ Показано приклад (вигадана зайнятість)';
-    $('#gcal').classList.remove('primary');
-    $('#gcalNote').textContent = 'Усі вільні слоти позначено. Зніміть ті, які не підходять (наприклад, коли ви в дорозі), і натисніть «Готово».';
-    draw();
-    $('#grid').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-  $('#gcal').addEventListener('click', () => {
-    if (!HAS_GCAL) {
-      const name = $('#nm').value.trim() || 'гість';
-      applyBusy(fakeBusy(poll, name));
+  const render = () => {
+    if (st.step === 'name') {
+      app.innerHTML = intro + `<div class="card">
+        <h2 class="q">Як вас звати?</h2>
+        <form id="f" novalidate>
+          <input type="text" id="nm" class="big-input" maxlength="60" placeholder="Ваше ім'я" value="${esc(st.name)}">
+          <p class="err" id="err"></p>
+          <button class="btn primary big-btn block" type="submit">Далі →</button>
+        </form></div>` + adminLink;
+      $('#nm').focus();
+      $('#f').addEventListener('submit', e => {
+        e.preventDefault();
+        st.name = $('#nm').value.trim();
+        if (!st.name) { $('#err').textContent = "Напишіть своє ім'я"; return; }
+        st.step = 'how'; render();
+      });
       return;
     }
-    // Вікно Google має відкритися прямо з натискання, інакше браузер його заблокує
-    const btn = $('#gcal');
-    let req;
-    try { req = GCal.request(); } catch (ex) { toast(ex.message); return; }
-    btn.disabled = true; btn.textContent = 'Підключаємо…';
-    req.then(token => GCal.busyCells(token, poll))
-      .then(set => applyBusy(set))
-      .catch(ex => { toast(ex.message); btn.textContent = '📅 Підключити Google Calendar'; })
-      .finally(() => { btn.disabled = false; });
-  });
-  $('#save').addEventListener('click', async () => {
-    const name = $('#nm').value.trim();
-    if (!name) { $('#nm').focus(); toast("Вкажіть своє ім'я"); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    if (!state.selected.size && !armed($('#save'), 'Жодного слоту. Зберегти все одно?')) return;
-    const btn = $('#save');
-    btn.disabled = true; btn.textContent = 'Зберігаємо…';
-    try {
-      const { id: rid } = await Store.saveResponse(id, { id: meId, name, cells: [...state.selected], source: state.source });
-      safeLS.set('cp_me_' + id, rid);
-      safeLS.set('cp_name', name);
-      toast('Дякуємо! Відповідь збережено');
-      route();
-    } catch (ex) { toast(ex.message); btn.disabled = false; btn.textContent = me ? 'Оновити відповідь' : 'Готово'; }
-  });
+    if (st.step === 'how') {
+      app.innerHTML = intro + `<div class="card">
+        <h2 class="q">${esc(st.name)}, коли вам зручно?</h2>
+        <div class="stack">
+          <button class="btn primary big-btn" id="gcal">📅 Взяти з мого Google Calendar</button>
+          <p class="small muted center" style="margin:-4px 0 6px">${HAS_GCAL ? 'Ми бачимо лише «зайнято / вільно», без назв подій.' : 'Демо: зайнятість буде вигадана.'}</p>
+          <button class="btn big-btn" id="manual">✋ Відмічу сам(а)</button>
+        </div>
+        <button class="linkbtn" id="rename">Я не ${esc(st.name)}</button>
+      </div>` + adminLink;
+      $('#rename').addEventListener('click', () => { st.step = 'name'; render(); });
+      $('#manual').addEventListener('click', () => { st.source = 'manual'; st.step = 'pick'; render(); });
+      $('#gcal').addEventListener('click', () => {
+        if (!HAS_GCAL) { applyBusy(fakeBusy(poll, st.name)); return; }
+        const btn = $('#gcal');
+        let req;
+        try { req = GCal.request(); } catch (ex) { toast(ex.message); return; }
+        btn.disabled = true; btn.textContent = 'Підключаємо…';
+        req.then(token => GCal.busyCells(token, poll)).then(applyBusy)
+          .catch(ex => { toast(ex.message); btn.disabled = false; btn.textContent = '📅 Взяти з мого Google Calendar'; });
+      });
+      if (HAS_GCAL) GCal.load().catch(() => {});
+      return;
+    }
+    if (st.step === 'pick') {
+      app.innerHTML = intro + `<div class="card">
+        ${st.busy ? '<div class="banner ok">✓ Готово! Зелене — коли ви вільні. Перевірте й натисніть «Готово».</div>' : ''}
+        <h2 class="q">Натисніть, коли вам зручно</h2>
+        <p class="small muted hint">Зелене — зручно. Натисніть ще раз, щоб прибрати.</p>
+        <div class="grid-wrap" id="grid"></div>
+        <div class="legend"><span><i style="background:var(--sel)"></i>зручно</span>${st.busy ? '<span><i style="background:repeating-linear-gradient(135deg,var(--busy) 0 3px,transparent 3px 6px)"></i>зайнято в календарі</span>' : ''}</div>
+      </div>
+      <div class="bottom-bar"><button class="btn primary big-btn block" id="save">✓ Готово</button></div>`;
+      renderGrid($('#grid'), poll, { mode: 'edit', selected: st.selected, busy: st.busy, onChange() {} });
+      $('#save').addEventListener('click', async () => {
+        if (!st.selected.size && !armed($('#save'), 'Нічого не вибрано. Натисніть ще раз, якщо вам ніколи не зручно')) return;
+        const btn = $('#save');
+        btn.disabled = true; btn.textContent = 'Зберігаємо…';
+        try {
+          const { id: rid } = await Store.saveResponse(id, { id: safeLS.get('cp_me_' + id), name: st.name, cells: [...st.selected], source: st.source });
+          safeLS.set('cp_me_' + id, rid);
+          safeLS.set('cp_name', st.name);
+          st.step = 'done'; render(); window.scrollTo(0, 0);
+        } catch (ex) { toast(ex.message); btn.disabled = false; btn.textContent = '✓ Готово'; }
+      });
+      return;
+    }
+    // done
+    app.innerHTML = intro + `<div class="card center">
+      <div class="emoji">✅</div>
+      <h2>Дякуємо, ${esc(st.name)}!</h2>
+      <p class="muted">Ваш час збережено. Коли організатор обере час, ви побачите його за цим самим посиланням${invited ? ' і отримаєте лист' : ''}.</p>
+      <button class="btn big-btn" id="edit">Змінити відповідь</button>
+    </div>` + adminLink;
+    $('#edit').addEventListener('click', () => { st.step = 'pick'; render(); });
+  };
+
+  const applyBusy = busySet => {
+    st.busy = busySet;
+    st.selected = new Set();
+    for (const d of pollDays(poll)) for (const m of pollTimes(poll)) { const k = cellKey(d, m); if (!busySet.has(k)) st.selected.add(k); }
+    st.source = 'google';
+    st.step = 'pick';
+    render();
+  };
+
+  render();
 }
 
-/* ---- сторінка організатора ---- */
+/* ======================= ОРГАНІЗАТОР: результати ======================= */
 function createdBanner(res) {
   const n = res.mailed || 0, failed = res.mailFailed || [];
-  let msg = '✓ Дзвінок створено!';
-  if (n) msg += ` Запрошення надіслано на пошту: ${plural(n, 'людині', 'людям', 'людям')}.`;
-  msg += ' Надішліть посилання і в групу WhatsApp.';
-  return `<div class="banner ok">${esc(msg)}</div>`
-    + (failed.length ? `<div class="banner">Не вдалося надіслати лист на: ${esc(failed.join(', '))}. Перевірте адреси або надішліть посилання вручну.</div>` : '')
+  return `<div class="banner ok">🎉 Готово! ${n ? `Запрошення надіслано ${plural(n, 'людині', 'людям', 'людям')}.` : 'Тепер надішліть посилання людям.'}</div>`
+    + (failed.length ? `<div class="banner">Не вдалося надіслати лист на: ${esc(failed.join(', '))}. Надішліть їм посилання самі.</div>` : '')
     + (res.demo && res.hadEmails ? '<div class="banner">Демо-режим: листи не надсилаються.</div>' : '');
 }
 async function viewAdmin(id, token, isNew) {
   const adm = await Store.checkAdmin(id, token).catch(() => null);
-  if (!adm) { app.innerHTML = `<div class="card"><h1>Немає доступу</h1><p class="muted">Посилання організатора неправильне.</p><a class="btn" ${navAttrs({ p: id })}>Відкрити як учасник</a></div>`; return; }
+  if (!adm) { app.innerHTML = `<div class="card center"><div class="emoji">🔒</div><h1>Немає доступу</h1><p class="muted">Це посилання організатора неправильне.</p><a class="btn big-btn" ${navAttrs({ p: id })}>Відкрити як учасник</a></div>`; return; }
   safeLS.set('cp_admin_' + id, token);
   const { poll, responses } = await Store.getPoll(id);
   const closed = isClosed(poll);
@@ -906,80 +991,91 @@ async function viewAdmin(id, token, isNew) {
   const slots = rankSlots(poll, responses);
   const withEmail = new Set((adm.emailNames || []).map(norm));
   const missingMail = missing.filter(n => withEmail.has(norm(n)));
-  const inviteText = `Привіт! 👋 Плануємо дзвінок «${poll.title}». Відмітьте, будь ласка, коли вам зручно (займе хвилину). Збір до ${fmtDeadline(poll.deadline)}:\n${pLink}`;
+  const expectedTotal = responses.length + missing.length;
+  const inviteText = `Привіт! 👋 Плануємо дзвінок «${poll.title}». Відмітьте, будь ласка, коли вам зручно (1 хвилина) до ${fmtDeadline(poll.deadline)}:\n${pLink}`;
   const remindText = `Нагадування 🙂 ${missing.length ? missing.join(', ') + ', в' : 'В'}ідмітьте, будь ласка, зручний час для дзвінка «${poll.title}» до ${fmtDeadline(poll.deadline)}:\n${pLink}`;
-
-  const medals = ['🥇', '🥈', '🥉'];
   const total = responses.length;
-  const slotsHtml = slots.length ? slots.map((s, i) => `
-    <div class="slot${i === 0 ? ' first' : ''}">
-      <div class="medal">${medals[i]}</div>
-      <div class="body">
-        <div class="when">${esc(fmtDayLong(s.date))}, ${hm(s.start)}–${hm(s.end)}</div>
-        <div class="bar"><span style="width:${Math.round(s.yes.length / total * 100)}%"></span></div>
-        <div class="small"><b>${s.yes.length === total ? 'Можуть усі ' + total : `Можуть ${s.yes.length} з ${total}`}</b>${s.no.length ? ` · <span class="muted">не можуть: ${esc(s.no.join(', '))}</span>` : ''}</div>
-        ${missing.length ? `<div class="small muted">ще не відповіли: ${esc(missing.join(', '))}</div>` : ''}
-      </div>
-      ${poll.final ? '' : `<button class="btn ${i === 0 ? 'primary' : ''} sm" data-pick="${i}">Обрати</button>`}
-    </div>`).join('')
-    : `<p class="muted">${total ? 'Спільного часу поки немає: ніхто не вибрав слоти, що вміщують дзвінок повністю.' : 'Поки ніхто не відповів. Найкращі варіанти з\'являться тут.'}</p>`;
+  const best = slots[0];
+
+  const status = poll.final ? '' : closed
+    ? '<span class="pill">Голосування завершено</span>'
+    : `<span class="pill warn">⏳ ще <span class="countdown" data-countdown></span></span>`;
+
+  const bestCard = poll.final ? finalCard(poll, true) : best ? `
+    <div class="card best">
+      <div class="muted">${closed ? 'Найкращий час' : 'Поки що найкращий час'}</div>
+      <div class="big">${esc(fmtDayLong(best.date))}<br>${hm(best.start)}–${hm(best.end)}</div>
+      <div class="who">${best.yes.length === total ? `✓ Можуть усі ${total}` : `Можуть ${best.yes.length} з ${total}`}${best.no.length ? `<div class="small muted">не можуть: ${esc(best.no.join(', '))}</div>` : ''}</div>
+      <button class="btn primary big-btn block" data-pick="0">✓ Обрати цей час</button>
+      ${!closed && missing.length ? `<p class="small muted center" style="margin:8px 0 0">Ще не відповіли ${missing.length}. Можна обрати зараз або почекати.</p>` : ''}
+    </div>` : `
+    <div class="card center">
+      <div class="emoji">⏳</div>
+      <h2>${total ? 'Спільного часу поки немає' : 'Чекаємо на відповіді'}</h2>
+      <p class="muted">${total ? 'Ніхто не обрав час, у який вміщається весь дзвінок. Нагадайте іншим або створіть дзвінок з іншими днями.' : 'Щойно люди відмітять час, тут з\'явиться найкращий варіант.'}</p>
+    </div>`;
+
+  const others = !poll.final && slots.length > 1 ? `
+    <details class="card">
+      <summary>Інші варіанти (${slots.length - 1})</summary>
+      ${slots.slice(1).map((s, i) => `<div class="slot"><div class="body"><b>${esc(fmtDayLong(s.date))}, ${hm(s.start)}–${hm(s.end)}</b>
+        <div class="small muted">можуть ${s.yes.length} з ${total}${s.no.length ? ` · не можуть: ${esc(s.no.join(', '))}` : ''}</div></div>
+        <button class="btn sm" data-pick="${i + 1}">Обрати</button></div>`).join('')}
+    </details>` : '';
 
   app.innerHTML = `
   ${isNew ? createdBanner(isNew) : ''}
-  ${headerCard(poll, responses)}
-  ${poll.final ? finalCard(poll, true) : ''}
+  <div class="card hero">
+    <div class="muted">Ваш дзвінок</div>
+    <h1>${esc(poll.title)}</h1>
+    <div class="meta">${status}<span class="pill">Відповіли ${total}${expectedTotal > total ? ' з ' + expectedTotal : ''}</span></div>
+  </div>
+  ${bestCard}
   ${poll.final ? '' : `<div class="card">
-    <h2>Посилання для учасників</h2>
-    <div class="copy"><input type="text" readonly value="${esc(pLink)}"><button class="btn sm" id="cpP">Копіювати</button></div>
-    <div class="actions" style="margin-top:10px">
-      <a class="btn wa" href="${esc(waLink(inviteText))}" target="_blank" rel="noopener">Надіслати в WhatsApp</a>
-      <a class="btn" ${navAttrs({ p: id })}>Відмітити свій час</a>
-    </div>
-  </div>`}
-  ${poll.final ? '' : `<div class="card">
-    <h2>Хто відповів</h2>
+    <h2>Люди</h2>
     <div class="people">
-      ${responses.map(r => `<span class="pill ok">✓ ${esc(r.name)}${r.source === 'google' ? ' 📅' : ''}</span>`).join('') || '<span class="muted small">Поки нікого</span>'}
-      ${missing.map(n => `<span class="pill">${esc(n)}${withEmail.has(norm(n)) ? ' ✉' : ''}</span>`).join('')}
+      ${responses.map(r => `<span class="pill ok">✓ ${esc(r.name)}${r.source === 'google' ? ' 📅' : ''}</span>`).join('')}
+      ${missing.map(n => `<span class="pill">⏳ ${esc(n)}</span>`).join('')}
+      ${!responses.length && !missing.length ? '<span class="muted small">Поки нікого</span>' : ''}
     </div>
-    ${!closed ? `<div class="actions" style="margin-top:12px">
-      <a class="btn sm" href="${esc(waLink(remindText))}" target="_blank" rel="noopener">🔔 Нагадати${missing.length ? ' (' + missing.length + ')' : ''} у WhatsApp</a>
-      ${LIVE && missingMail.length ? `<button class="btn sm" id="remindMail">✉ Нагадати поштою (${missingMail.length})</button>` : ''}
-      <button class="btn sm" id="closeNow">Завершити збір зараз</button>
-      <button class="btn sm" id="demo" title="Додає вигаданих учасників, щоб подивитися, як працюють результати">+ Тестові учасники</button>
-    </div>` : ''}
+    ${closed ? '' : `<div class="stack" style="margin-top:14px">
+      <a class="btn wa big-btn" href="${esc(waLink(missing.length && total ? remindText : inviteText))}" target="_blank" rel="noopener">${missing.length && total ? `🔔 Нагадати у WhatsApp` : '📤 Надіслати посилання у WhatsApp'}</a>
+      ${LIVE && missingMail.length ? `<button class="btn big-btn" id="remindMail">✉ Нагадати поштою (${missingMail.length})</button>` : ''}
+      <div class="copy"><input type="text" readonly value="${esc(pLink)}" aria-label="Посилання для учасників"><button class="btn" id="cpP">Копіювати</button></div>
+    </div>`}
   </div>`}
-  <div class="card">
-    <h2>${poll.final ? 'Варіанти' : closed ? 'Найкращі варіанти. Оберіть час' : 'Поточні лідери'}</h2>
-    ${!closed && !poll.final ? '<p class="small muted">Збір ще триває, тож картина може змінитися. Обрати час можна вже зараз або дочекатися кінця таймера.</p>' : ''}
-    ${!poll.final && slots.length ? `<div class="field"><label for="meet">Посилання на дзвінок <span class="muted">(Meet / Zoom, необов'язково)</span></label><input type="url" id="meet" placeholder="https://meet.google.com/..."></div>` : ''}
-    ${slotsHtml}
-  </div>
-  <div class="card">
-    <h2>Загальна картина</h2>
+  ${others}
+  <details class="card">
+    <summary>Більше</summary>
+    ${!poll.final && slots.length ? `<div class="field" style="margin-top:12px"><label for="meet">Посилання на дзвінок (Meet / Zoom), якщо вже є</label><input type="url" id="meet" placeholder="https://meet.google.com/..."></div>` : ''}
+    <h3>Коли зручно всім</h3>
     <div class="grid-wrap" id="grid"></div>
-    <div class="legend"><span><i style="background:rgba(var(--heat-rgb),.25)"></i>мало кому</span><span><i style="background:rgba(var(--heat-rgb),1)"></i>усім</span><span><i style="outline:2px solid var(--warn);outline-offset:-2px;background:transparent"></i>найкращий слот</span></div>
-  </div>
-  <div class="card"><h2>Ваше посилання організатора</h2>
-    <p class="small muted">Збережіть його: лише за ним можна обрати фінальний час.</p>
-    <div class="copy"><input type="text" readonly value="${esc(aLink)}"><button class="btn sm" id="cpA">Копіювати</button></div>
-  </div>`;
+    <div class="legend"><span><i style="background:rgba(var(--heat-rgb),.25)"></i>мало кому</span><span><i style="background:rgba(var(--heat-rgb),1)"></i>усім</span></div>
+    <h3>Ваше посилання організатора</h3>
+    <p class="small muted">Збережіть його: лише за ним можна обрати час.</p>
+    <div class="copy"><input type="text" readonly value="${esc(aLink)}" aria-label="Посилання організатора"><button class="btn" id="cpA">Копіювати</button></div>
+    <div class="actions" style="margin-top:14px">
+      <a class="btn sm" ${navAttrs({ p: id })}>Відмітити свій час</a>
+      ${!closed && !poll.final ? '<button class="btn sm" id="closeNow">Завершити голосування</button>' : ''}
+      ${!poll.final ? '<button class="btn sm" id="demo" title="Додає вигаданих людей, щоб подивитися, як це працює">+ Тестові учасники</button>' : ''}
+    </div>
+  </details>`;
 
-  renderGrid($('#grid'), poll, { mode: 'heat', responses, highlight: poll.final ? { date: poll.final.date, start: poll.final.start, end: poll.final.start + poll.duration } : slots[0] });
+  renderGrid($('#grid'), poll, { mode: 'heat', responses, highlight: poll.final ? { date: poll.final.date, start: poll.final.start, end: poll.final.start + poll.duration } : best });
   if (!closed && !poll.final) startTicker(poll.deadline, () => route());
 
   $('#cpP')?.addEventListener('click', () => copyText(pLink, $('#cpP').previousElementSibling));
   $('#cpA')?.addEventListener('click', () => copyText(aLink, $('#cpA').previousElementSibling));
   $('#remindMail')?.addEventListener('click', e => {
-    if (!armed(e.currentTarget, `Надіслати лист ${missingMail.length} людям?`)) return;
+    if (!armed(e.currentTarget, `Надіслати лист ${missingMail.length}? Натисніть ще раз`)) return;
     busy(e.currentTarget, async () => {
       const r = await Store.adminAction(id, token, 'remind');
       const f = r.mailFailed || [];
-      toast((r.mailed ? `Нагадування надіслано: ${r.mailed}` : 'Жодного листа не надіслано') + (f.length ? `. Не вдалося: ${f.join(', ')}` : ''));
+      toast((r.mailed ? `Надіслано: ${r.mailed}` : 'Жодного листа не надіслано') + (f.length ? `. Не вдалося: ${f.join(', ')}` : ''));
     });
   });
   $('#closeNow')?.addEventListener('click', e => {
-    if (!armed(e.currentTarget, 'Точно завершити? Натисніть ще раз')) return;
+    if (!armed(e.currentTarget, 'Точно? Натисніть ще раз')) return;
     busy(e.currentTarget, async () => { await Store.adminAction(id, token, 'close'); route(); });
   });
   $('#unfinal')?.addEventListener('click', e => busy(e.currentTarget, async () => { await Store.adminAction(id, token, 'finalize', { final: null }); route(); }));
@@ -998,17 +1094,16 @@ async function viewAdmin(id, token, isNew) {
     const taken = new Set(responses.map(r => norm(r.name)));
     const names = [...missing, ...pool].filter((n, i, a) => !taken.has(norm(n)) && a.findIndex(x => norm(x) === norm(n)) === i).slice(0, 4);
     for (const n of names) {
-      const busy = fakeBusy(poll, n), cells = [];
+      const bz = fakeBusy(poll, n), cells = [];
       const r = rng(hashStr(n));
-      for (const d of pollDays(poll)) for (const m of pollTimes(poll)) { const k = cellKey(d, m); if (!busy.has(k) && r() > 0.25) cells.push(k); }
+      for (const d of pollDays(poll)) for (const m of pollTimes(poll)) { const k = cellKey(d, m); if (!bz.has(k) && r() > 0.25) cells.push(k); }
       await Store.saveResponse(id, { name: n, cells, source: 'google' });
     }
-    toast('Додано тестових учасників: ' + names.length);
+    toast('Додано тестових людей: ' + names.length);
     route();
   }));
 }
 
-/* ---------------- роутер ---------------- */
 let justCreated = false;
 async function route() {
   clearInterval(tickTimer);
