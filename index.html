@@ -800,8 +800,8 @@ async function viewParticipant(id) {
   <div class="card">
     <div class="field"><label for="nm">Ваше ім'я</label>
       <input type="text" id="nm" maxlength="60" placeholder="Як вас звати?" value="${esc(presetName)}"></div>
-    <button class="btn ${me ? '' : 'primary '}block${showCal ? '' : ' hide'}" id="gcal">📅 Підключити Google Calendar</button>
-    <p class="small muted${showCal ? '' : ' hide'}" style="margin:8px 0 0" id="gcalNote">Один клік, і ваші вільні слоти позначаться самі. Ми бачимо лише «зайнято / вільно» у вибрані дні, без назв і змісту подій, і нічого не зберігаємо з вашого календаря.${HAS_GCAL ? '' : ' <b>Демо:</b> зайнятість вигадана.'}</p>
+    <button class="btn ${me ? '' : 'primary '}block${showCal ? '' : ' hide'}" id="gcal">${HAS_GCAL ? '📅 Підключити Google Calendar' : '📅 Приклад з календарем (демо)'}</button>
+    <p class="small muted${showCal ? '' : ' hide'}" style="margin:8px 0 0" id="gcalNote">Один клік, і ваші вільні слоти позначаться самі. Ми бачимо лише «зайнято / вільно» у вибрані дні, без назв і змісту подій, і нічого не зберігаємо з вашого календаря.${HAS_GCAL ? '' : ' <b>Зараз це демо:</b> зайнятість вигадана, справжній календар не підключено.'}</p>
     <p class="small muted" style="margin:10px 0 0">Або просто відмітьте зручний час у сітці нижче.</p>
   </div>`}
   <div class="card">
@@ -846,7 +846,7 @@ async function viewParticipant(id) {
     for (const d of pollDays(poll)) for (const m of pollTimes(poll)) { const k = cellKey(d, m); if (!state.busy.has(k)) state.selected.add(k); }
     state.source = 'google'; state.tab = 'mine';
     app.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x.dataset.tab === 'mine'));
-    $('#gcal').textContent = HAS_GCAL ? '✓ Календар підключено' : '✓ Календар підключено (демо)';
+    $('#gcal').textContent = HAS_GCAL ? '✓ Календар підключено' : '✓ Показано приклад (вигадана зайнятість)';
     $('#gcal').classList.remove('primary');
     $('#gcalNote').textContent = 'Усі вільні слоти позначено. Зніміть ті, які не підходять (наприклад, коли ви в дорозі), і натисніть «Готово».';
     draw();
