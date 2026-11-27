@@ -585,6 +585,33 @@ const app = $('#app');
 
 const MONTHS_NOM = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
 const EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]+$/;
+/* Підказка для описок у популярних поштових доменах: gmail.con → gmail.com */
+const MAIL_DOMAINS = ['gmail.com', 'ukr.net', 'i.ua', 'meta.ua', 'outlook.com', 'hotmail.com', 'icloud.com', 'yahoo.com', 'proton.me', 'protonmail.com', 'me.com', 'live.com'];
+function editDist(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] ? d[i - 2][j - 2] + 1 : Infinity);
+  return d[a.length][b.length];
+}
+/** Повертає виправлену адресу, якщо домен схожий на популярний (але не збігається), інакше ''. */
+function emailTypo(email) {
+  const at = email.lastIndexOf('@'); if (at < 0) return '';
+  const dom = email.slice(at + 1).toLowerCase();
+  if (MAIL_DOMAINS.includes(dom)) return '';
+  const best = MAIL_DOMAINS.map(x => [x, editDist(dom, x)]).sort((a, b) => a[1] - b[1])[0];
+  return best && best[1] > 0 && best[1] <= 2 && dom.length > 3 ? email.slice(0, at + 1) + best[0] : '';
+}
+/** Текст помилки для адреси або ''. */
+function emailProblem(email) {
+  emailProblem.ok = emailProblem.ok || new Set();
+  if (!EMAIL_RE.test(email)) return `Здається, в пошті помилка: ${email}`;
+  const fix = emailTypo(email);
+  if (!fix || emailProblem.ok.has(email)) return '';
+  emailProblem.ok.add(email); // якщо людина натисне ще раз — значить, адреса правильна
+  return `Перевірте пошту: ${email}. Можливо, ви мали на увазі ${fix}? Якщо все правильно, натисніть ще раз.`;
+}
 const MAX_DAYS = 31;
 const toLocalInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const roundHour = ms => { const d = new Date(ms); d.setMinutes(0, 0, 0); return d.getTime() + 3600e3; };
@@ -746,7 +773,8 @@ function viewCreate() {
       if (!st.title) return 'Напишіть, про що дзвінок';
       if (!st.organizer) return "Напишіть своє ім'я";
       if (LIVE && !st.orgEmail) return 'Напишіть свою пошту: туди прийде посилання на результати';
-      if (st.orgEmail && !EMAIL_RE.test(st.orgEmail)) return 'Здається, в пошті помилка';
+      const pe = st.orgEmail && emailProblem(st.orgEmail);
+      if (pe) return pe;
     }
     if (st.step === 2) {
       if (!st.kind) return 'Оберіть, як часто буде дзвінок';
@@ -760,8 +788,7 @@ function viewCreate() {
       if (d > (t - f) * 60) return 'Дзвінок не вміщається в ці години. Оберіть інший час або коротший дзвінок';
     }
     if (st.step === 4) {
-      const bad = st.invitees.find(i => i.email && !EMAIL_RE.test(i.email));
-      if (bad) return `Здається, в пошті помилка: ${bad.email}`;
+      for (const i of st.invitees) { const pe = i.email && emailProblem(i.email); if (pe) return pe; }
     }
     if (st.step === 5) {
       const dl = deadline(), days = [...st.days].sort(), [, t] = hours();
@@ -1270,7 +1297,8 @@ async function viewMy() {
   $('#lf')?.addEventListener('submit', async e => {
     e.preventDefault();
     const email = $('#le').value.trim();
-    if (!EMAIL_RE.test(email)) { $('#err').textContent = 'Здається, в пошті помилка'; return; }
+    const pe = emailProblem(email);
+    if (pe) { $('#err').textContent = pe; return; }
     const btn = $('#lf button'); btn.disabled = true; btn.textContent = 'Надсилаємо…';
     try {
       await Store.login(email);
