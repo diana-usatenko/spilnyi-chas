@@ -212,19 +212,19 @@ function inviteMail_(p, name, link, isReminder) {
     + 'Коли всі відповідять, організатор обере час, який підходить найбільшій кількості людей.\n\n'
     + 'Лист надіслано через «Спільний час». Організатор: ' + p.organizer + '.';
 
-  var row = function (k, v) { return '<tr><td style="padding:4px 12px 4px 0;color:#5d6670;white-space:nowrap;vertical-align:top">' + k + '</td><td style="padding:4px 0;color:#15191e">' + esc_(v) + '</td></tr>'; };
-  var html = '<div style="background:#f6f7f9;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">'
-    + '<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #dde2e7;border-radius:14px;padding:24px">'
-    + '<div style="font-size:13px;color:#0f8a6c;font-weight:bold;margin-bottom:12px">⏱ Спільний час</div>'
-    + '<p style="font-size:16px;color:#15191e;margin:0 0 12px">Привіт, ' + esc_(name) + '!</p>'
-    + '<p style="font-size:15px;line-height:1.5;color:#15191e;margin:0 0 16px">' + esc_(intro) + '</p>'
+  var row = function (k, v) { return '<tr><td style="padding:4px 12px 4px 0;color:#5B6B82;white-space:nowrap;vertical-align:top">' + k + '</td><td style="padding:4px 0;color:#0B1F3B">' + esc_(v) + '</td></tr>'; };
+  var html = '<div style="background:#F4F1EA;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">'
+    + '<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #DCE3EB;border-radius:14px;padding:24px">'
+    + '<div style="font-size:13px;color:#0B1F3B;font-weight:bold;margin-bottom:12px">⏱ Спільний час</div>'
+    + '<p style="font-size:16px;color:#0B1F3B;margin:0 0 12px">Привіт, ' + esc_(name) + '!</p>'
+    + '<p style="font-size:15px;line-height:1.5;color:#0B1F3B;margin:0 0 16px">' + esc_(intro) + '</p>'
     + '<table style="font-size:14px;border-collapse:collapse;margin:0 0 20px">'
     + row('Дзвінок', p.title) + row('Тривалість', dur) + row('Можливі дні', days) + row('Години', hours + ' (за Києвом)') + row('Відповісти до', until)
     + '</table>'
-    + '<a href="' + esc_(link) + '" style="display:inline-block;background:#0f8a6c;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:10px">Обрати зручний час</a>'
-    + '<p style="font-size:13px;line-height:1.5;color:#5d6670;margin:16px 0 0">💡 На сторінці можна одним кліком підключити Google Calendar, і вільні слоти позначаться самі.</p>'
-    + '<p style="font-size:13px;line-height:1.5;color:#5d6670;margin:12px 0 0">Коли всі відповідять, організатор обере час, який підходить найбільшій кількості людей. Якщо кнопка не працює, відкрийте посилання: <a href="' + esc_(link) + '" style="color:#0f8a6c">' + esc_(link) + '</a></p>'
-    + '</div><p style="text-align:center;font-size:12px;color:#8a939c;margin:12px 0 0">Лист надіслано через «Спільний час». Організатор: ' + esc_(p.organizer) + '.</p></div>';
+    + '<a href="' + esc_(link) + '" style="display:inline-block;background:#0B1F3B;color:#F4F1EA;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:10px">Обрати зручний час</a>'
+    + '<p style="font-size:13px;line-height:1.5;color:#5B6B82;margin:16px 0 0">💡 На сторінці можна одним кліком підключити Google Calendar, і вільні слоти позначаться самі.</p>'
+    + '<p style="font-size:13px;line-height:1.5;color:#5B6B82;margin:12px 0 0">Коли всі відповідять, організатор обере час, який підходить найбільшій кількості людей. Якщо кнопка не працює, відкрийте посилання: <a href="' + esc_(link) + '" style="color:#0B1F3B">' + esc_(link) + '</a></p>'
+    + '</div><p style="text-align:center;font-size:12px;color:#7A879A;margin:12px 0 0">Лист надіслано через «Спільний час». Організатор: ' + esc_(p.organizer) + '.</p></div>';
   return { subject: subject, text: text, html: html };
 }
 

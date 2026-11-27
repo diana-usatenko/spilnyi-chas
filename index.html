@@ -7,26 +7,26 @@
 <meta name="description" content="Простий спосіб знайти час для спільного дзвінка: кожен відмічає зручні слоти, організатор обирає найкращий.">
 <style>
 :root{
-  --bg:#f6f7f9; --surface:#ffffff; --surface-2:#eef1f4; --text:#15191e; --muted:#5d6670;
-  --border:#dde2e7; --accent:#0f8a6c; --accent-ink:#ffffff; --accent-soft:#d6f1e8;
-  --warn:#b4570b; --warn-soft:#fdeedd; --danger:#b42318;
-  --sel:#14a37f; --busy:#c9cfd6; --heat-0:#eef1f4; --heat-rgb:20,163,127;
-  --shadow:0 1px 2px rgba(16,24,40,.06),0 2px 8px rgba(16,24,40,.06);
+  --bg:#F4F1EA; --surface:#FFFFFF; --surface-2:#E6EDF4; --text:#0B1F3B; --muted:#5B6B82;
+  --border:#DCE3EB; --accent:#0B1F3B; --accent-ink:#F4F1EA; --accent-soft:#BFD3E6;
+  --warn:#9A4A0B; --warn-soft:#F6E6D3; --danger:#B42318;
+  --sel:#2C5687; --busy:#C3CCD6; --heat-0:#E6EDF4; --heat-rgb:11,31,59;
+  --shadow:0 1px 2px rgba(11,31,59,.06),0 2px 8px rgba(11,31,59,.06);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0f1215; --surface:#171b20; --surface-2:#20262d; --text:#e8ecf0; --muted:#9aa4ae;
-    --border:#2b333b; --accent:#2cc39b; --accent-ink:#06261d; --accent-soft:#123b30;
-    --warn:#f0a35e; --warn-soft:#3a2613; --danger:#f97066;
-    --sel:#2cc39b; --busy:#3a434c; --heat-0:#20262d; --heat-rgb:44,195,155;
+    --bg:#0B1F3B; --surface:#13294A; --surface-2:#1C355A; --text:#F4F1EA; --muted:#A9B6C8;
+    --border:#27416A; --accent:#BFD3E6; --accent-ink:#0B1F3B; --accent-soft:#1E3A63;
+    --warn:#F0B27A; --warn-soft:#3A2A16; --danger:#F97066;
+    --sel:#8FB3D6; --busy:#33496B; --heat-0:#1C355A; --heat-rgb:191,211,230;
     --shadow:none; color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0f1215; --surface:#171b20; --surface-2:#20262d; --text:#e8ecf0; --muted:#9aa4ae;
-  --border:#2b333b; --accent:#2cc39b; --accent-ink:#06261d; --accent-soft:#123b30;
-  --warn:#f0a35e; --warn-soft:#3a2613; --danger:#f97066;
-  --sel:#2cc39b; --busy:#3a434c; --heat-0:#20262d; --heat-rgb:44,195,155;
+  --bg:#0B1F3B; --surface:#13294A; --surface-2:#1C355A; --text:#F4F1EA; --muted:#A9B6C8;
+  --border:#27416A; --accent:#BFD3E6; --accent-ink:#0B1F3B; --accent-soft:#1E3A63;
+  --warn:#F0B27A; --warn-soft:#3A2A16; --danger:#F97066;
+  --sel:#8FB3D6; --busy:#33496B; --heat-0:#1C355A; --heat-rgb:191,211,230;
   --shadow:none; color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -55,7 +55,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
 .btn:hover{background:var(--surface-2)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.primary:hover{filter:brightness(.95)}
-.btn.wa{background:#25d366;border-color:#25d366;color:#06301a}
+.btn.wa{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--text)}
 .btn.block{width:100%}
 .btn.sm{padding:7px 11px;font-size:13px;border-radius:8px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -1029,9 +1029,9 @@ async function viewParticipant(id) {
     }
     if (st.step === 'pick') {
       app.innerHTML = intro + `<div class="card">
-        ${st.busy ? '<div class="banner ok">✓ Готово! Зелене — коли ви вільні. Перевірте й натисніть «Готово».</div>' : ''}
+        ${st.busy ? '<div class="banner ok">✓ Готово! Синє — коли ви вільні. Перевірте й натисніть «Готово».</div>' : ''}
         <h2 class="q">${poll.repeat ? 'Коли вам зазвичай зручно?' : 'Натисніть, коли вам зручно'}</h2>
-        <p class="small muted hint">Зелене — зручно. Натисніть ще раз, щоб прибрати.</p>
+        <p class="small muted hint">Синє — зручно. Натисніть ще раз, щоб прибрати.</p>
         <div class="grid-wrap" id="grid"></div>
         <div class="legend"><span><i style="background:var(--sel)"></i>зручно</span>${st.busy ? '<span><i style="background:repeating-linear-gradient(135deg,var(--busy) 0 3px,transparent 3px 6px)"></i>зайнято в календарі</span>' : ''}</div>
       </div>
