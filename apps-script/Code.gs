@@ -16,10 +16,12 @@
 var POLLS = 'Polls';
 var RESP = 'Responses';
 var POLL_COLS = ['id', 'adminToken', 'title', 'organizer', 'duration', 'dateFrom', 'dateTo', 'hourFrom', 'hourTo',
-  'skipWeekends', 'deadline', 'tz', 'expected', 'createdAt', 'closedAt', 'final', 'deadlineText', 'days', 'invitees', 'siteUrl'];
+  'skipWeekends', 'deadline', 'tz', 'expected', 'createdAt', 'closedAt', 'final', 'deadlineText', 'days', 'invitees', 'siteUrl', 'repeat'];
 var RESP_COLS = ['pollId', 'id', 'name', 'cells', 'source', 'updatedAt', 'slotsCount'];
 var EMAIL_RE = /^[^\s@<>()",;]+@[^\s@<>()",;]+\.[^\s@<>()",;]+$/;
 var UK_WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+var UK_WD_FULL = ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', 'пʼятниця', 'субота'];
+var NTH_TEXT = { '1': '1-й', '2': '2-й', '3': '3-й', '4': '4-й', '-1': 'останній' };
 var UK_MON = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 var CELL_RE = /^\d{4}-\d{2}-\d{2}\|\d{1,4}$/;
 var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -195,7 +197,7 @@ function sendMails_(p, people, isReminder) {
 /** Стандартний лист-запрошення (або нагадування). */
 function inviteMail_(p, name, link, isReminder) {
   var dur = durText_(p.duration);
-  var days = (p.days && p.days.length ? p.days : [p.dateFrom]).map(dayText_).join(', ');
+  var days = p.repeat ? repeatText_(p.repeat) : (p.days && p.days.length ? p.days : [p.dateFrom]).map(dayText_).join(', ');
   var hours = pad_(p.hourFrom) + ':00–' + pad_(p.hourTo) + ':00';
   var until = deadlineText_(p.deadline, p.tz);
   var subject = (isReminder ? 'Нагадування: оберіть час для дзвінка «' : 'Оберіть зручний час для дзвінка «') + p.title + '»';
@@ -224,6 +226,12 @@ function inviteMail_(p, name, link, isReminder) {
     + '<p style="font-size:13px;line-height:1.5;color:#5d6670;margin:12px 0 0">Коли всі відповідять, організатор обере час, який підходить найбільшій кількості людей. Якщо кнопка не працює, відкрийте посилання: <a href="' + esc_(link) + '" style="color:#0f8a6c">' + esc_(link) + '</a></p>'
     + '</div><p style="text-align:center;font-size:12px;color:#8a939c;margin:12px 0 0">Лист надіслано через «Спільний час». Організатор: ' + esc_(p.organizer) + '.</p></div>';
   return { subject: subject, text: text, html: html };
+}
+
+/** «Регулярно, щотижня: вівторок або четвер» */
+function repeatText_(r) {
+  var how = r.freq === 'month' ? 'щомісяця, ' + NTH_TEXT[String(r.nth)] + ' тиждень' : r.interval === 2 ? 'раз на 2 тижні' : 'щотижня';
+  return 'регулярно (' + how + '): ' + r.wds.map(function (w) { return UK_WD_FULL[w]; }).join(' або ');
 }
 
 function durText_(m) {
@@ -273,6 +281,18 @@ function validatePoll_(b) {
     d.invitees.push({ id: uid_(6), name: name, email: email });
   });
   d.expected = d.invitees.map(function (i) { return i.name; });
+  d.repeat = null;
+  if (b.repeat) {
+    var r = b.repeat, wds = (Array.isArray(r.wds) ? r.wds : []).map(Number).filter(function (w) { return w >= 0 && w <= 6 && w === Math.floor(w); });
+    if (!wds.length) throw new Error('Оберіть хоча б один день тижня');
+    if (r.freq === 'month') {
+      var nth = Number(r.nth);
+      if ([1, 2, 3, 4, -1].indexOf(nth) < 0) throw new Error('Некоректний тиждень місяця');
+      d.repeat = { freq: 'month', interval: 1, nth: nth, wds: wds };
+    } else {
+      d.repeat = { freq: 'week', interval: Number(r.interval) === 2 ? 2 : 1, wds: wds };
+    }
+  }
   d.siteUrl = str_(b.siteUrl, 300);
   if (!/^https?:\/\/[^\s"'<>]+$/.test(d.siteUrl)) throw new Error('Некоректна адреса сайту');
   if (!d.title) throw new Error('Вкажіть тему дзвінка');
@@ -358,7 +378,7 @@ function pollToRow_(p) {
     p.skipWeekends ? 'TRUE' : 'FALSE', p.deadline, p.tz, JSON.stringify(p.expected || []), p.createdAt,
     p.closedAt || '', p.final ? JSON.stringify(p.final) : '',
     Utilities.formatDate(new Date(Number(p.deadline)), p.tz || 'Europe/Kyiv', 'yyyy-MM-dd HH:mm'),
-    JSON.stringify(p.days || []), JSON.stringify(p.invitees || []), p.siteUrl || ''];
+    JSON.stringify(p.days || []), JSON.stringify(p.invitees || []), p.siteUrl || '', p.repeat ? JSON.stringify(p.repeat) : ''];
 }
 
 function pollFromRow_(o) {
@@ -368,7 +388,7 @@ function pollFromRow_(o) {
     hourFrom: Number(o.hourFrom), hourTo: Number(o.hourTo), skipWeekends: o.skipWeekends === 'TRUE',
     deadline: Number(o.deadline), tz: o.tz || 'Europe/Kyiv', expected: parse_(o.expected, []),
     createdAt: Number(o.createdAt), closedAt: o.closedAt ? Number(o.closedAt) : null, final: parse_(o.final, null),
-    days: parse_(o.days, []), invitees: parse_(o.invitees, []), siteUrl: o.siteUrl
+    days: parse_(o.days, []), invitees: parse_(o.invitees, []), siteUrl: o.siteUrl, repeat: parse_(o.repeat, null)
   };
 }
 

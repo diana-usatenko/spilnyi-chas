@@ -118,6 +118,7 @@ footer{margin-top:24px;text-align:center;font-size:12px;color:var(--muted)}
 .chip:hover{border-color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip.on small{color:var(--accent-ink);opacity:.85}
+.wd-chips .chip{min-width:56px;align-items:center}
 .chip:disabled{opacity:.4;cursor:not-allowed;border-style:dashed}
 .chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .nav{display:flex;gap:10px;margin-top:8px}
@@ -370,8 +371,12 @@ const GCal = {
   },
   async busyCells(token, poll) {
     const days = pollDays(poll), tz = poll.tz || TZ;
-    const timeMin = new Date(tzUtc(days[0], poll.hourFrom * 60, tz)).toISOString();
-    const timeMax = new Date(tzUtc(days[days.length - 1], poll.hourTo * 60, tz)).toISOString();
+    // для регулярного дзвінка дивимось 4 найближчі повторення: «зайнято», якщо зайнято хоча б у 2
+    const occ = d => poll.repeat ? occurrences(poll.repeat, d, 4) : [d];
+    const need = poll.repeat ? 2 : 1;
+    const allDates = days.flatMap(occ).sort();
+    const timeMin = new Date(tzUtc(allDates[0], poll.hourFrom * 60, tz)).toISOString();
+    const timeMax = new Date(tzUtc(allDates[allDates.length - 1], poll.hourTo * 60, tz)).toISOString();
     const r = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -383,8 +388,8 @@ const GCal = {
     const busy = (cal.busy || []).map(b => [Date.parse(b.start), Date.parse(b.end)]);
     const set = new Set();
     for (const d of days) for (const m of pollTimes(poll)) {
-      const s0 = tzUtc(d, m, tz), s1 = s0 + STEP * 60e3;
-      if (busy.some(([a, b]) => a < s1 && b > s0)) set.add(cellKey(d, m));
+      const hits = occ(d).filter(x => { const s0 = tzUtc(x, m, tz), s1 = s0 + STEP * 60e3; return busy.some(([a, b]) => a < s1 && b > s0); }).length;
+      if (hits >= need) set.add(cellKey(d, m));
     }
     return set;
   }
@@ -475,7 +480,7 @@ function renderGrid(container, poll, opts) {
   grid.className = 'grid';
   grid.style.gridTemplateColumns = `44px repeat(${days.length}, minmax(42px, 1fr))`;
   let html = '<div></div>';
-  for (const d of days) html += `<div class="gh" data-day="${d}" title="${opts.mode === 'edit' ? 'Натисніть, щоб виділити / зняти весь день' : esc(fmtDayLong(d))}">${esc(fmtWeekday(d))}<b>${esc(fmtDateNum(d))}</b></div>`;
+  for (const d of days) html += `<div class="gh" data-day="${d}" title="${opts.mode === 'edit' ? 'Натисніть, щоб виділити / зняти весь день' : esc(slotTitle(poll, d))}">${poll.repeat ? `<b>${WD_SHORT[wdOf(d)]}</b>` : `${esc(fmtWeekday(d))}<b>${esc(fmtDateNum(d))}</b>`}</div>`;
 
   let counts = null, names = null, total = 0;
   if (opts.mode === 'heat') {
@@ -572,6 +577,58 @@ const toLocalInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-
 const roundHour = ms => { const d = new Date(ms); d.setMinutes(0, 0, 0); return d.getTime() + 3600e3; };
 
 /* Готові варіанти: людина натискає кнопку, а не заповнює поля */
+/* ---------- регулярні дзвінки ---------- */
+const WD_FULL = ['неділя', 'понеділок', 'вівторок', 'середа', 'четвер', 'пʼятниця', 'субота'];
+const WD_PO = ['неділях', 'понеділках', 'вівторках', 'середах', 'четвергах', 'пʼятницях', 'суботах'];
+const WD_SHORT = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const WD_RRULE = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+const NTH_TEXT = { 1: '1-й', 2: '2-й', 3: '3-й', 4: '4-й', '-1': 'останній' };
+const NTH_GEN = { 1: '1-го', 2: '2-го', 3: '3-го', 4: '4-го', '-1': 'останнього' };
+const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+const wdOf = d => dObj(d).getUTCDay();
+/** «щотижня, по вівторках», «раз на 2 тижні, вівторок», «щомісяця, 4-й вівторок» */
+function repeatText(r, wd) {
+  if (!r) return '';
+  if (r.freq === 'month') return wd === undefined
+    ? 'щомісяця, ' + NTH_GEN[r.nth] + ' тижня'
+    : 'щомісяця, ' + NTH_GEN[r.nth] + ' тижня, ' + WD_FULL[wd];
+  if (r.interval === 2) return 'раз на 2 тижні' + (wd === undefined ? '' : ', ' + WD_FULL[wd]);
+  return 'щотижня' + (wd === undefined ? '' : ', по ' + WD_PO[wd]);
+}
+function nthWeekday(y, m, wd, nth) {
+  if (nth === -1) {
+    const last = new Date(Date.UTC(y, m + 1, 0));
+    return isoDate(new Date(Date.UTC(y, m, last.getUTCDate() - (last.getUTCDay() - wd + 7) % 7)));
+  }
+  const first = new Date(Date.UTC(y, m, 1));
+  return isoDate(new Date(Date.UTC(y, m, 1 + (wd - first.getUTCDay() + 7) % 7 + 7 * (nth - 1))));
+}
+/** Перша дата з днем тижня wd, строго після afterDate. */
+function firstOccurrence(r, wd, afterDate) {
+  if (r.freq === 'month') {
+    const a = dObj(afterDate);
+    for (let k = 0; k < 4; k++) {
+      const c = nthWeekday(a.getUTCFullYear(), a.getUTCMonth() + k, wd, r.nth);
+      if (c > afterDate) return c;
+    }
+  }
+  let d = addDays(afterDate, 1);
+  while (wdOf(d) !== wd) d = addDays(d, 1);
+  return d;
+}
+/** n найближчих повторень, починаючи з date. */
+function occurrences(r, date, n) {
+  const out = [date];
+  const a = dObj(date);
+  for (let k = 1; k < n; k++) {
+    out.push(r.freq === 'month' ? nthWeekday(a.getUTCFullYear(), a.getUTCMonth() + k, wdOf(date), r.nth) : addDays(date, 7 * (r.interval || 1) * k));
+  }
+  return out;
+}
+/** Назва слоту: дата для разового дзвінка, «Щотижня, по вівторках» для регулярного. */
+const slotTitle = (poll, d) => poll.repeat ? cap(repeatText(poll.repeat, wdOf(d))) : fmtDayLong(d);
+const slotFirst = (poll, d) => poll.repeat ? `<div class="small muted">перший дзвінок — ${esc(fmtDayLong(d))}</div>` : '';
+
 const PART_OPTS = [
   { id: 'morning', label: '☀️ Зранку', sub: '9:00–12:00', from: 9, to: 12 },
   { id: 'day', label: '🌤 Вдень', sub: '12:00–17:00', from: 12, to: 17 },
@@ -593,7 +650,8 @@ function viewCreate() {
   const today = todayLocal();
   const st = viewCreate.st || (viewCreate.st = {
     step: 1, title: '', organizer: safeLS.get('cp_name') || '', days: new Set(), month: today.slice(0, 8) + '01',
-    part: 'evening', hf: 17, ht: 21, dur: 60, durC: '', dl: 48, dlC: '', invitees: [{ name: '', email: '' }]
+    part: 'evening', hf: 17, ht: 21, dur: 60, durC: '', dl: 48, dlC: '', invitees: [{ name: '', email: '' }],
+    kind: '', freq: 'w1', nth: 1, wds: new Set()
   });
   const TOTAL = 5;
 
@@ -605,11 +663,31 @@ function viewCreate() {
         <h2 class="q2">Як вас звати?</h2>
         <div class="field"><input type="text" id="org" class="big-input" maxlength="60" placeholder="Ваше ім'я" value="${esc(st.organizer)}"></div>`;
       case 2: return `
-        <h1 class="q">У які дні можна?</h1>
-        <p class="muted hint">Натисніть на дні. Можна кілька.</p>
-        <div class="cal" id="cal"></div>
-        <div class="chips" style="margin-top:12px"><button type="button" class="chip" id="qWork">Наступні 5 робочих днів</button><button type="button" class="chip" id="qClear">Очистити</button></div>
-        <p class="small" id="daysSum" style="margin:12px 0 0"></p>`;
+        <h1 class="q">Як часто?</h1>
+        <div class="chips">
+          ${chip('kind', 'once', '📅 Один раз', st.kind === 'once', 'оберу дати')}
+          ${chip('kind', 'repeat', '🔁 Регулярно', st.kind === 'repeat', 'щотижня, щомісяця…')}
+        </div>
+        ${st.kind === 'once' ? `
+          <h2 class="q2">Які дати підходять?</h2>
+          <p class="muted hint">Натисніть на дні в календарі. Можна кілька.</p>
+          <div class="cal" id="cal"></div>
+          <div class="chips" style="margin-top:12px"><button type="button" class="chip" id="qWork">Наступні 5 робочих днів</button><button type="button" class="chip" id="qClear">Очистити</button></div>
+          <p class="small" id="daysSum" style="margin:12px 0 0"></p>` : ''}
+        ${st.kind === 'repeat' ? `
+          <h2 class="q2">Як часто повторювати?</h2>
+          <div class="chips">
+            ${chip('freq', 'w1', 'Щотижня', st.freq === 'w1')}
+            ${chip('freq', 'w2', 'Раз на 2 тижні', st.freq === 'w2')}
+            ${chip('freq', 'm', 'Раз на місяць', st.freq === 'm')}
+          </div>
+          ${st.freq === 'm' ? `
+            <h2 class="q2">Який тиждень місяця?</h2>
+            <div class="chips">${[1, 2, 3, 4, -1].map(n => chip('nth', n, cap(NTH_TEXT[n]), st.nth === n)).join('')}</div>` : ''}
+          <h2 class="q2">У які дні тижня можна?</h2>
+          <p class="muted hint">Можна кілька, і ми підберемо день, який підходить усім.</p>
+          <div class="chips wd-chips">${[1, 2, 3, 4, 5, 6, 0].map(w => chip('wd', w, WD_SHORT[w], st.wds.has(w))).join('')}</div>
+          <p class="small" id="rptSum" style="margin:12px 0 0">${st.wds.size ? '✓ <b>' + esc(cap(repeatText(st.freq === 'm' ? { freq: 'month', nth: st.nth } : { freq: 'week', interval: st.freq === 'w2' ? 2 : 1 }))) + ':</b> ' + esc([...st.wds].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(w => WD_FULL[w]).join(' або ')) : ''}</p>` : ''}`;
       case 3: return `
         <h1 class="q">О котрій?</h1>
         <div class="chips">${PART_OPTS.map(o => chip('part', o.id, o.label, st.part === o.id, o.sub)).join('')}</div>
@@ -643,9 +721,12 @@ function viewCreate() {
   };
   const hours = () => st.part === 'custom' ? [st.hf, st.ht] : (o => [o.from, o.to])(PART_OPTS.find(o => o.id === st.part));
   const duration = () => st.dur === 'custom' ? Math.round(Number(st.durC)) : st.dur;
+  const repeatObj = () => st.kind !== 'repeat' ? null
+    : st.freq === 'm' ? { freq: 'month', interval: 1, nth: st.nth, wds: [...st.wds] }
+    : { freq: 'week', interval: st.freq === 'w2' ? 2 : 1, wds: [...st.wds] };
   const lastEnd = () => { const days = [...st.days].sort(); return new Date(days[days.length - 1] + 'T00:00').getTime() + hours()[1] * 3600e3; };
   const presetDl = v => roundHour(Date.now() + v * 3600e3) - 3600e3;
-  const dlOk = v => v === 'custom' || presetDl(v) < lastEnd();
+  const dlOk = v => v === 'custom' || st.kind === 'repeat' || presetDl(v) < lastEnd();
   const deadline = () => st.dl === 'custom' ? (st.dlC ? new Date(st.dlC).getTime() : NaN) : presetDl(st.dl);
 
   const check = () => {
@@ -653,7 +734,11 @@ function viewCreate() {
       if (!st.title) return 'Напишіть, про що дзвінок';
       if (!st.organizer) return "Напишіть своє ім'я";
     }
-    if (st.step === 2 && !st.days.size) return 'Натисніть хоча б на один день';
+    if (st.step === 2) {
+      if (!st.kind) return 'Оберіть: один раз чи регулярно';
+      if (st.kind === 'once' && !st.days.size) return 'Натисніть хоча б на один день у календарі';
+      if (st.kind === 'repeat' && !st.wds.size) return 'Оберіть хоча б один день тижня';
+    }
     if (st.step === 3) {
       const [f, t] = hours(), d = duration();
       if (t <= f) return 'Кінець має бути пізніше за початок';
@@ -667,6 +752,7 @@ function viewCreate() {
     if (st.step === 5) {
       const dl = deadline(), days = [...st.days].sort(), [, t] = hours();
       if (!Number.isFinite(dl) || dl <= Date.now()) return 'Оберіть час у майбутньому';
+      if (st.kind === 'repeat') return dl > Date.now() + 30 * 864e5 ? 'Не довше 30 днів' : '';
       const lastEnd = new Date(days[days.length - 1] + 'T00:00').getTime() + t * 3600e3;
       if (dl >= lastEnd) return 'Відповіді треба зібрати раніше, ніж останній обраний день. Оберіть коротший термін';
     }
@@ -697,12 +783,13 @@ function viewCreate() {
     $('#skip')?.addEventListener('click', () => { st.invitees = [{ name: '', email: '' }]; st.step++; render(); });
     app.querySelectorAll('.chip[data-g]').forEach(b => b.addEventListener('click', () => {
       save();
-      const g = b.dataset.g, raw = b.dataset.v, v = /^\d+$/.test(raw) ? +raw : raw;
-      st[g] = v;
+      const g = b.dataset.g, raw = b.dataset.v, v = /^-?\d+$/.test(raw) ? +raw : raw;
+      if (g === 'wd') { st.wds.has(v) ? st.wds.delete(v) : st.wds.add(v); }
+      else st[g] = v;
       render();
       if (g === 'dur' && v === 'custom') $('#durC').focus();
     }));
-    if (st.step === 2) bindCal();
+    if (st.step === 2 && st.kind === 'once') bindCal();
     if (st.step === 4) bindInv();
     if (st.step === 5) $('#summary').innerHTML = summaryHtml();
     $('#f').addEventListener('submit', async e => {
@@ -795,17 +882,26 @@ function viewCreate() {
     const people = st.invitees.filter(i => i.name || i.email);
     return `<div class="sum-title">Перевірте:</div>
       <div>📞 <b>${esc(st.title)}</b></div>
-      <div>🗓 ${days.map(d => esc(fmtDay(d).replace(',', ''))).join(' · ')}</div>
+      <div>${st.kind === 'repeat'
+        ? '🔁 ' + esc(cap(repeatText(repeatObj())) + ': ' + [...st.wds].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(w => WD_FULL[w]).join(' або '))
+        : '🗓 ' + days.map(d => esc(fmtDay(d).replace(',', ''))).join(' · ')}</div>
       <div>🕘 ${pad(f)}:00–${pad(t)}:00 · ${duration()} хв</div>
       <div>👥 ${people.length ? esc(people.map(i => i.name || i.email.split('@')[0]).join(', ')) : 'надішлете посилання самі'}</div>`;
   };
 
   const submit = async () => {
-    const [f, t] = hours(), days = [...st.days].sort();
+    const [f, t] = hours(), r = repeatObj();
+    let days = [...st.days].sort();
+    if (r) {
+      // перше повторення кожного дня тижня — після завершення голосування
+      const dl = new Date(deadline());
+      const after = `${dl.getFullYear()}-${pad(dl.getMonth() + 1)}-${pad(dl.getDate())}`;
+      days = [...new Set(r.wds.map(w => firstOccurrence(r, w, after)))].sort();
+    }
     const invitees = st.invitees.filter(i => i.name || i.email).map(i => ({ name: i.name || i.email.split('@')[0], email: i.email }));
     const data = {
       title: st.title, organizer: st.organizer, duration: duration(), days, dateFrom: days[0], dateTo: days[days.length - 1],
-      hourFrom: f, hourTo: t, deadline: deadline(), tz: TZ, invitees, expected: invitees.map(i => i.name),
+      hourFrom: f, hourTo: t, deadline: deadline(), tz: TZ, invitees, expected: invitees.map(i => i.name), repeat: r,
       siteUrl: location.href.split(/[?#]/)[0]
     };
     const btn = $('#next');
@@ -831,7 +927,8 @@ function finalCard(poll, forAdmin) {
   return `<div class="card final">
     <div class="emoji">🎉</div>
     <div class="muted">Дзвінок призначено</div>
-    <div class="big">${esc(fmtDayLong(d))}<br>${hm(start)}–${hm(start + poll.duration)}</div>
+    <div class="big">${esc(slotTitle(poll, d))}<br>${hm(start)}–${hm(start + poll.duration)}</div>
+    ${slotFirst(poll, d)}
     <p class="muted">${esc(poll.title)} · час за Києвом</p>
     ${f.link ? `<p><a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.link)}</a></p>` : ''}
     <div class="stack">
@@ -849,14 +946,18 @@ function gcalLink(poll, d, start) {
     + '&text=' + encodeURIComponent(poll.title)
     + '&dates=' + ymd + 'T' + t(start) + '/' + ymd + 'T' + t(start + poll.duration)
     + '&ctz=' + encodeURIComponent(poll.tz || TZ)
+    + (poll.repeat ? '&recur=' + encodeURIComponent('RRULE:' + (poll.repeat.freq === 'month'
+        ? 'FREQ=MONTHLY;BYDAY=' + poll.repeat.nth + WD_RRULE[wdOf(d)]
+        : 'FREQ=WEEKLY;INTERVAL=' + (poll.repeat.interval || 1) + ';BYDAY=' + WD_RRULE[wdOf(d)])) : '')
     + '&details=' + encodeURIComponent(details);
 }
 function finalText(poll) {
   const f = poll.final;
-  return `📞 Дзвінок «${poll.title}» призначено!\n🗓 ${fmtDayLong(f.date)}, ${hm(f.start)}–${hm(f.start + poll.duration)} (за Києвом)`
+  return `📞 Дзвінок «${poll.title}» призначено!\n🗓 ${slotTitle(poll, f.date)}, ${hm(f.start)}–${hm(f.start + poll.duration)} (за Києвом)`
+    + (poll.repeat ? `\nПерший дзвінок — ${fmtDayLong(f.date)}` : '')
     + (f.link ? `\n🔗 ${f.link}` : '') + `\n\nДодати в календар: ${gcalLink(poll, f.date, f.start)}`;
 }
-const whenText = poll => `${poll.duration} хв · ${pad(poll.hourFrom)}:00–${pad(poll.hourTo)}:00`;
+const whenText = poll => (poll.repeat ? '🔁 ' + repeatText(poll.repeat) + ' · ' : '') + `${poll.duration} хв · ${pad(poll.hourFrom)}:00–${pad(poll.hourTo)}:00`;
 
 /* ======================= УЧАСНИК ======================= */
 async function viewParticipant(id) {
@@ -930,7 +1031,7 @@ async function viewParticipant(id) {
     if (st.step === 'pick') {
       app.innerHTML = intro + `<div class="card">
         ${st.busy ? '<div class="banner ok">✓ Готово! Зелене — коли ви вільні. Перевірте й натисніть «Готово».</div>' : ''}
-        <h2 class="q">Натисніть, коли вам зручно</h2>
+        <h2 class="q">${poll.repeat ? 'Коли вам зазвичай зручно?' : 'Натисніть, коли вам зручно'}</h2>
         <p class="small muted hint">Зелене — зручно. Натисніть ще раз, щоб прибрати.</p>
         <div class="grid-wrap" id="grid"></div>
         <div class="legend"><span><i style="background:var(--sel)"></i>зручно</span>${st.busy ? '<span><i style="background:repeating-linear-gradient(135deg,var(--busy) 0 3px,transparent 3px 6px)"></i>зайнято в календарі</span>' : ''}</div>
@@ -1004,7 +1105,8 @@ async function viewAdmin(id, token, isNew) {
   const bestCard = poll.final ? finalCard(poll, true) : best ? `
     <div class="card best">
       <div class="muted">${closed ? 'Найкращий час' : 'Поки що найкращий час'}</div>
-      <div class="big">${esc(fmtDayLong(best.date))}<br>${hm(best.start)}–${hm(best.end)}</div>
+      <div class="big">${esc(slotTitle(poll, best.date))}<br>${hm(best.start)}–${hm(best.end)}</div>
+      ${slotFirst(poll, best.date)}
       <div class="who">${best.yes.length === total ? `✓ Можуть усі ${total}` : `Можуть ${best.yes.length} з ${total}`}${best.no.length ? `<div class="small muted">не можуть: ${esc(best.no.join(', '))}</div>` : ''}</div>
       <button class="btn primary big-btn block" data-pick="0">✓ Обрати цей час</button>
       ${!closed && missing.length ? `<p class="small muted center" style="margin:8px 0 0">Ще не відповіли ${missing.length}. Можна обрати зараз або почекати.</p>` : ''}
@@ -1018,7 +1120,7 @@ async function viewAdmin(id, token, isNew) {
   const others = !poll.final && slots.length > 1 ? `
     <details class="card">
       <summary>Інші варіанти (${slots.length - 1})</summary>
-      ${slots.slice(1).map((s, i) => `<div class="slot"><div class="body"><b>${esc(fmtDayLong(s.date))}, ${hm(s.start)}–${hm(s.end)}</b>
+      ${slots.slice(1).map((s, i) => `<div class="slot"><div class="body"><b>${esc(slotTitle(poll, s.date))}, ${hm(s.start)}–${hm(s.end)}</b>
         <div class="small muted">можуть ${s.yes.length} з ${total}${s.no.length ? ` · не можуть: ${esc(s.no.join(', '))}` : ''}</div></div>
         <button class="btn sm" data-pick="${i + 1}">Обрати</button></div>`).join('')}
     </details>` : '';
