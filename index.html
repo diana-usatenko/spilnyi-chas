@@ -118,6 +118,8 @@ footer{margin-top:24px;text-align:center;font-size:12px;color:var(--muted)}
 .chip:hover{border-color:var(--accent)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip.on small{color:var(--accent-ink);opacity:.85}
+.chips.list{flex-direction:column}
+.chips.list .chip{width:100%;padding:14px 16px}
 .wd-chips .chip{min-width:56px;align-items:center}
 .chip:disabled{opacity:.4;cursor:not-allowed;border-style:dashed}
 .chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -663,10 +665,12 @@ function viewCreate() {
         <h2 class="q2">Як вас звати?</h2>
         <div class="field"><input type="text" id="org" class="big-input" maxlength="60" placeholder="Ваше ім'я" value="${esc(st.organizer)}"></div>`;
       case 2: return `
-        <h1 class="q">Як часто?</h1>
-        <div class="chips">
-          ${chip('kind', 'once', '📅 Один раз', st.kind === 'once', 'оберу дати')}
-          ${chip('kind', 'repeat', '🔁 Регулярно', st.kind === 'repeat', 'щотижня, щомісяця…')}
+        <h1 class="q">Як часто буде дзвінок?</h1>
+        <div class="chips list">
+          ${chip('how', 'once', '📅 Один раз', st.kind === 'once', 'оберете конкретні дати')}
+          ${chip('how', 'w1', '🔁 Щотижня', st.kind === 'repeat' && st.freq === 'w1', 'наприклад, кожен вівторок')}
+          ${chip('how', 'w2', '🔁 Раз на 2 тижні', st.kind === 'repeat' && st.freq === 'w2', 'наприклад, вівторок через тиждень')}
+          ${chip('how', 'm', '🔁 Раз на місяць', st.kind === 'repeat' && st.freq === 'm', 'наприклад, 4-й вівторок місяця')}
         </div>
         ${st.kind === 'once' ? `
           <h2 class="q2">Які дати підходять?</h2>
@@ -675,12 +679,6 @@ function viewCreate() {
           <div class="chips" style="margin-top:12px"><button type="button" class="chip" id="qWork">Наступні 5 робочих днів</button><button type="button" class="chip" id="qClear">Очистити</button></div>
           <p class="small" id="daysSum" style="margin:12px 0 0"></p>` : ''}
         ${st.kind === 'repeat' ? `
-          <h2 class="q2">Як часто повторювати?</h2>
-          <div class="chips">
-            ${chip('freq', 'w1', 'Щотижня', st.freq === 'w1')}
-            ${chip('freq', 'w2', 'Раз на 2 тижні', st.freq === 'w2')}
-            ${chip('freq', 'm', 'Раз на місяць', st.freq === 'm')}
-          </div>
           ${st.freq === 'm' ? `
             <h2 class="q2">Який тиждень місяця?</h2>
             <div class="chips">${[1, 2, 3, 4, -1].map(n => chip('nth', n, cap(NTH_TEXT[n]), st.nth === n)).join('')}</div>` : ''}
@@ -735,7 +733,7 @@ function viewCreate() {
       if (!st.organizer) return "Напишіть своє ім'я";
     }
     if (st.step === 2) {
-      if (!st.kind) return 'Оберіть: один раз чи регулярно';
+      if (!st.kind) return 'Оберіть, як часто буде дзвінок';
       if (st.kind === 'once' && !st.days.size) return 'Натисніть хоча б на один день у календарі';
       if (st.kind === 'repeat' && !st.wds.size) return 'Оберіть хоча б один день тижня';
     }
@@ -785,6 +783,7 @@ function viewCreate() {
       save();
       const g = b.dataset.g, raw = b.dataset.v, v = /^-?\d+$/.test(raw) ? +raw : raw;
       if (g === 'wd') { st.wds.has(v) ? st.wds.delete(v) : st.wds.add(v); }
+      else if (g === 'how') { if (v === 'once') st.kind = 'once'; else { st.kind = 'repeat'; st.freq = v; } }
       else st[g] = v;
       render();
       if (g === 'dur' && v === 'custom') $('#durC').focus();
